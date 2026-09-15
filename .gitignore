@@ -5,6 +5,9 @@ __pycache__/
 .ruff_cache/
 .coverage
 .venv/
+.env
+.env.local
+.env.*.local
 
 # Runtime data (Sqlite db, weather fixtures)
 data/

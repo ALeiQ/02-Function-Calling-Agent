@@ -12,6 +12,8 @@ class Settings(BaseSettings):
 
     db_path: str = "data/app.db"
 
+    qweather_api_key: str = ""
+
     api_host: str = "0.0.0.0"
     api_port: int = 8001
 

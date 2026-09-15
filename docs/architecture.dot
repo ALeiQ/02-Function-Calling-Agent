@@ -45,7 +45,7 @@ digraph FunctionCallingAgent {
         style = dashed
         color = "#94a3b8"
         calculator [ label = "calculator\nast 安全求值", fillcolor = "#ccfbf1", color = "#14b8a6" ];
-        weather [ label = "weather\nOpen-Meteo 实时天气", fillcolor = "#ccfbf1", color = "#14b8a6" ];
+        weather [ label = "weather\n和风天气 + Open-Meteo\n双源择优", fillcolor = "#ccfbf1", color = "#14b8a6" ];
         sql [ label = "sql\n只读 + SELECT-only", fillcolor = "#ccfbf1", color = "#14b8a6" ];
         now [ label = "now\n当前日期 / 时间", fillcolor = "#ccfbf1", color = "#14b8a6" ];
     }

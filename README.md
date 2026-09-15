@@ -23,7 +23,7 @@ Function-Calling Agent 给 LLM 提供一组带类型的工具定义：模型**�
 | 工具 | 用途 | 设计要点 |
 |------|------|----------|
 | `calculator` | 算术计算（基于 `ast` 的安全求值） | 确定性；绝不 `eval` 原始字符串 |
-| `weather` | 城市实时天气查询 | Open-Meteo 在线数据（免 key）：先地理编码城市，再取实时温度/天气/湿度/风速 |
+| `weather` | 城市实时天气查询 | 双数据源：和风天气（需 `QWEATHER_API_KEY`）+ Open-Meteo（免 key），并行查询自动择优，优先和风；支持全球任意城市（县级小城市如「山东省莱阳市」也能解析） |
 | `sql` | 查询 SQLite demo 库 | 只读连接 + 仅允许 SELECT 的护栏 |
 | `now` | 当前日期 / 时间 / 星期 | 让模型基于真实时间作答，不靠幻觉 |
 
@@ -70,6 +70,8 @@ python run_server.py
 # 打开 http://localhost:8001
 ```
 
+配置：复制 `.env.example` 为 `.env`（或参考其注释）。天气工具可选接入和风天气（推荐，地县级城市更准）：在[和风天气控制台](https://console.qweather.com)注册免费订阅后，把 `QWEATHER_API_KEY=你的Key` 填进 `.env`；未配置时自动退化为 Open-Meteo（免 key）。
+
 API 一览：
 
 | 接口 | 方法 | 说明 |
@@ -87,14 +89,14 @@ API 一览：
 - **自研循环而非 LangChain / LlamaIndex**：协议每一步都显式可控、可手讲，这正是本课题的目的。
 - **原生 `tools` 参数而非 ReAct 自由文本**：模型必须输出合法的结构化调用，原生模式最可靠——这是"结构化输出"考察点的答案。
 - **数据库工具采用只读 + 仅 SELECT 的 SQLite**：工具意味着攻击面扩大；DB 工具是安全意识的体现：`mode=ro` 连接、归一化 `SELECT`-only 校验、给模型返回可自愈的机器可读拒绝信息。
-- **天气用 mock 而非真实 API**：完全离线、确定性，测试稳定零网络；模块边界清楚，后续可无缝切换 wttr.in 或真实服务商。
+- **天气用双真实数据源并自动择优**：和风天气 + Open-Meteo 并行查询，取可用结果优先和风（中式描述更本土）；Open-Meteo 免 key、和风需免费 key（`QWEATHER_API_KEY`，缺省自动退化为仅 Open-Meteo）。测试全程离线 mock HTTP，不触网。
 - **SSE 的 token 级流式转为单 chunk 降级**：Ollama 0.33.3 + `qwen2.5` 在 `stream: True` 与 `tools` 并存时返回空结果；为保证工具调用正确性，`chat_stream` 内部走非流式调用、把整段回答作为一个 chunk 事件下发，事件协议仍保持 `chunk / tool_call / tool_result / done`，后续换模型可平滑恢复逐字流式。
 
 ## 测试
 
 ```bash
-pytest                 # 89 个用例全绿（工具层 + loop + API + CLI，模型调用全程 mock）
-pytest --cov=src       # 覆盖率 99%（仅留 `__main__` 一行不可测）
+pytest                 # 106 个用例全绿（工具层 + loop + API + CLI，模型调用全程 mock）
+pytest --cov=src       # 覆盖率 96%（双天气数据源等网络分支保持离线 mock）
 ruff check .           # lint 全绿
 ```
 
