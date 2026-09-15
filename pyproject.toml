@@ -1,6 +1,6 @@
 [project]
 name = "function-calling-agent"
-version = "0.1.0"
+version = "0.2.0"
 description = "Function-calling agent with tool registry, structured output and multi-turn loop"
 requires-python = ">=3.9"
 dependencies = [
