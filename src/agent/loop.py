@@ -54,6 +54,8 @@ def _chat_once(
             "tools": tools,
             "options": {"temperature": settings.temperature},
             "stream": False,
+            "think": settings.ollama_think,
+            "keep_alive": settings.ollama_keep_alive,
         },
         timeout=180,
     )
@@ -85,6 +87,8 @@ def _chat_stream_once(
                 "tools": tools,
                 "options": {"temperature": settings.temperature},
                 "stream": True,
+                "think": settings.ollama_think,
+                "keep_alive": settings.ollama_keep_alive,
             },
             stream=True,
             timeout=(5, 60),
@@ -95,9 +99,14 @@ def _chat_stream_once(
         final: dict[str, Any] = {}
         try:
             for raw in resp.iter_lines():
-                if not raw or not raw.startswith(b"data: "):
+                if not raw:
                     continue
-                event = json.loads(raw[6:].decode("utf-8"))
+                # Ollama 0.33 发出的是普通 JSON 行；早期版本带 SSE "data: " 前缀，两种都兼容
+                line = raw[6:] if raw.startswith(b"data: ") else raw
+                try:
+                    event = json.loads(line)
+                except (json.JSONDecodeError, UnicodeDecodeError):
+                    continue
                 msg = event.get("message") or {}
                 if msg.get("tool_calls"):
                     tool_calls.extend(msg["tool_calls"])
