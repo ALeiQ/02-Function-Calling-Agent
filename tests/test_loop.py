@@ -135,15 +135,51 @@ def test_tools_schemas_sent_to_model(monkeypatch) -> None:
     assert set(names) == {"calculator", "weather", "sql", "now"}
 
 
-def test_chat_stream_events(monkeypatch) -> None:
-    script = [
-        _reply(tool_calls=[_tool_call("calculator", {"expression": "2*3"})]),
-        _reply("答案是 6"),
-    ]
-    _fake_client(script, monkeypatch)
+def test_chat_stream_events_tool_turn(monkeypatch) -> None:
+    script = iter(
+        [
+            iter(
+                [("message", _reply(tool_calls=[_tool_call("calculator", {"expression": "2*3"})]))]
+            ),
+            iter([("message", _reply("答案是 6"))]),
+        ]
+    )
+
+    def fake_stream_once(messages, tools):
+        return next(script)
+
+    monkeypatch.setattr(loop, "_chat_stream_once", fake_stream_once)
     events = list(loop.chat_stream("2×3？", store=SessionStore()))
     types = [e["type"] for e in events]
-    assert types == ["tool_call", "tool_result", "done"]
+    assert types == ["tool_call", "tool_result", "chunk", "done"]
     assert events[0]["tool"] == "calculator"
+    assert events[0]["index"] == 0
+    assert events[1]["index"] == 0
     assert events[1]["result"] == "6"
-    assert events[2]["answer"] == "答案是 6"
+    assert events[2]["text"] == "答案是 6"
+    assert events[3]["answer"] == "答案是 6"
+
+
+def test_chat_stream_events_token_chunks(monkeypatch) -> None:
+    turns = iter(
+        [
+            iter(
+                [
+                    ("chunk", "答"),
+                    ("chunk", "案是"),
+                    ("message", {"role": "assistant", "content": "答案是", "tool_calls": []}),
+                ]
+            )
+        ]
+    )
+
+    def fake_stream_once(messages, tools):
+        return next(turns)
+
+    monkeypatch.setattr(loop, "_chat_stream_once", fake_stream_once)
+    events = list(loop.chat_stream("2×3？", store=SessionStore()))
+    assert events[:-1] == [
+        {"type": "chunk", "text": "答"},
+        {"type": "chunk", "text": "案是"},
+    ]
+    assert events[-1] == {"type": "done", "answer": "答案是", "trace": [], "turns": 1, "ok": True}

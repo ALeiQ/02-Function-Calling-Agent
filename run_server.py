@@ -1,8 +1,5 @@
 #!/usr/bin/env python3
-"""Start the Function-Calling Agent web server.
-
-TODO(milestone 4): activate once the API is implemented.
-"""
+"""Start the Function-Calling Agent web server."""
 
 import uvicorn
 

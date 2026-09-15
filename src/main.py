@@ -65,6 +65,18 @@ def repl():
 
 
 @app.command()
+def serve(
+    host: str = "127.0.0.1",
+    port: int = 8000,
+    reload: bool = False,
+):
+    """Start the FastAPI server + web UI at http://127.0.0.1:8000."""
+    import uvicorn
+
+    uvicorn.run("src.api.app:app", host=host, port=port, reload=reload)
+
+
+@app.command()
 def tools():
     """List all registered tools and their schemas."""
     from src.tools.registry import registry as tools_registry

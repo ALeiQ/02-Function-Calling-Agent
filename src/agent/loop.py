@@ -58,6 +58,20 @@ def _ensure_system_prompt(session: Session) -> None:
         session.add({"role": "system", "content": SYSTEM_PROMPT})
 
 
+def _chat_stream_once(
+    messages: list[dict], tools: list[dict]
+) -> Generator[tuple[str, Any], None, None]:
+    """One model turn for the streaming endpoint.
+
+    Ollama + qwen2.5 returns empty results when ``stream: True`` is combined
+    with ``tools``, so this uses the non-streaming call (which reliably
+    returns tool_calls) and yields the final message. Token-level streaming is
+    therefore currently downgraded to a single content chunk per answer.
+    """
+    reply = _chat_once(messages, tools)
+    yield "message", reply
+
+
 def _append_tool_messages(
     session: Session, trace: list[dict], tool_calls: list[dict]
 ) -> list[dict]:
@@ -123,9 +137,11 @@ def chat_stream(
     session_id: str | None = None,
     store: SessionStore | None = None,
 ) -> Generator[dict[str, Any], None, None]:
-    """Same as ``chat`` but yields tool-call/tool-result events and the answer.
+    """Run the loop with token-level streaming.
 
-    Events: ``{"type": "tool_call"|"tool_result"|"done", ...}``.
+    Events: ``{"type": "chunk"|"tool_call"|"tool_result"|"done", ...}``.
+    Chunks stream the final answer token by token; tool calls/results arrive as
+    structured events clients (e.g. SSE + web UI) render in real time.
     """
     store = store or default_store
     session = store.get_or_create(session_id)
@@ -135,8 +151,15 @@ def chat_stream(
     trace: list[dict] = []
     tools = tool_schema()
     for turn in range(1, settings.max_turns + 1):
+        content_parts: list[str] = []
+        final_message: dict[str, Any] = {}
         try:
-            reply = _chat_once(session.messages, tools)
+            for kind, payload in _chat_stream_once(session.messages, tools):
+                if kind == "chunk":
+                    content_parts.append(payload)
+                    yield {"type": "chunk", "text": payload}
+                else:
+                    final_message = payload
         except _requests.RequestException as exc:
             yield {
                 "type": "done",
@@ -147,11 +170,13 @@ def chat_stream(
             }
             return
 
-        content = reply.get("content") or ""
-        tool_calls = reply.get("tool_calls") or []
+        content = final_message.get("content") or "".join(content_parts)
+        tool_calls = final_message.get("tool_calls") or []
         session.add({"role": "assistant", "content": content, "tool_calls": tool_calls})
 
         if not tool_calls:
+            if content and not content_parts:
+                yield {"type": "chunk", "text": content}
             yield {
                 "type": "done",
                 "answer": content,
@@ -161,9 +186,10 @@ def chat_stream(
             }
             return
 
-        for call in tool_calls:
+        for index, call in enumerate(tool_calls):
             yield {
                 "type": "tool_call",
+                "index": index,
                 "tool": call.get("function", {}).get("name", "?"),
                 "arguments": call.get("function", {}).get("arguments", {}),
             }
@@ -171,6 +197,7 @@ def chat_stream(
         for entry in entries:
             yield {
                 "type": "tool_result",
+                "index": entry["index"],
                 "tool": entry["tool"],
                 "result": entry["result"],
             }

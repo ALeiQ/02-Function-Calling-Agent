@@ -1,12 +1,219 @@
 <!doctype html>
-<html lang="zh">
+<html lang="zh-CN">
   <head>
     <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Function-Calling Agent</title>
-    <!-- TODO(milestone 4): minimal chat UI rendering tool-call traces. -->
+    <style>
+      :root {
+        --bg: #f8fafc;
+        --card: #ffffff;
+        --border: #e2e8f0;
+        --text: #0f172a;
+        --muted: #64748b;
+        --primary: #2563eb;
+        --user: #dbeafe;
+        --assistant: #f1f5f9;
+        --tool: #ccfbf1;
+        --warn: #fef3c7;
+      }
+      * { box-sizing: border-box; }
+      body {
+        margin: 0;
+        font-family: -apple-system, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+        background: var(--bg);
+        color: var(--text);
+      }
+      header {
+        padding: 14px 20px;
+        background: var(--card);
+        border-bottom: 1px solid var(--border);
+        display: flex;
+        align-items: baseline;
+        gap: 12px;
+      }
+      header h1 { font-size: 18px; margin: 0; }
+      header .sub { color: var(--muted); font-size: 13px; }
+      main { max-width: 760px; margin: 0 auto; padding: 20px 16px 120px; }
+      .msg { max-width: 640px; margin: 12px 0; padding: 10px 14px; border-radius: 12px; white-space: pre-wrap; line-height: 1.55; }
+      .msg.user { background: var(--user); margin-left: auto; }
+      .msg.assistant { background: var(--assistant); }
+      .tools { margin: 6px 0 12px 8px; border-left: 3px solid #14b8a6; padding-left: 12px; }
+      .tools summary { cursor: pointer; font-weight: 600; font-size: 14px; margin: 4px 0; }
+      .tool-card { background: var(--card); border: 1px solid var(--border); border-radius: 8px; margin: 6px 0; padding: 8px 10px; font-size: 13px; }
+      .tool-card .t-name { color: #0d9488; font-weight: 600; }
+      .tool-card .t-args { color: var(--muted); font-family: ui-monospace, Menlo, monospace; word-break: break-all; }
+      .tool-card .t-result { color: var(--text); font-family: ui-monospace, Menlo, monospace; white-space: pre-wrap; word-break: break-all; margin-top: 4px; }
+      .tool-card .t-error { color: #dc2626; }
+      .thinking { color: var(--muted); font-size: 13px; margin: 6px 0 12px 8px; }
+      .composer { position: fixed; bottom: 0; left: 0; right: 0; background: var(--card); border-top: 1px solid var(--border); padding: 12px 16px; }
+      .composer form { max-width: 760px; margin: 0 auto; display: flex; gap: 10px; }
+      .composer input {
+        flex: 1; padding: 12px 14px; border: 1px solid var(--border); border-radius: 10px; font-size: 15px;
+      }
+      .composer button {
+        padding: 12px 22px; border: 0; border-radius: 10px; background: var(--primary); color: #fff; font-size: 15px; cursor: pointer;
+      }
+      .composer button:disabled { opacity: 0.5; cursor: not-allowed; }
+      .statusbar { position: fixed; bottom: 74px; left: 0; right: 0; text-align: center; color: var(--muted); font-size: 12px; }
+    </style>
   </head>
   <body>
-    <h1>Function-Calling Agent</h1>
-    <p>Coming soon.</p>
+    <header>
+      <h1>Function-Calling Agent</h1>
+      <span class="sub" id="model-label"></span>
+    </header>
+
+    <main id="log"></main>
+    <div class="statusbar" id="statusbar"></div>
+
+    <div class="composer">
+      <form id="form">
+        <input id="input" autocomplete="off" placeholder="问点什么… 例如：北京天气怎么样？（Enter 发送）" />
+        <button id="send" type="submit">发送</button>
+      </form>
+    </div>
+
+    <script>
+      const sessionId = crypto.randomUUID().slice(0, 8);
+      const log = document.getElementById("log");
+      const form = document.getElementById("form");
+      const input = document.getElementById("input");
+      const send = document.getElementById("send");
+      const statusbar = document.getElementById("statusbar");
+      let busy = false;
+
+      function bubble(cls, text) {
+        const el = document.createElement("div");
+        el.className = "msg " + cls;
+        el.textContent = text || (cls === "assistant" ? "" : "...");
+        log.appendChild(el);
+        window.scrollTo(0, document.body.scrollHeight);
+        return el;
+      }
+
+      function clearThinking() {
+        const dots = document.querySelectorAll(".thinking");
+        dots.forEach((d) => d.remove());
+      }
+
+      function addToolCard(event) {
+        let tools = document.querySelector(".tools.active");
+        if (!tools) {
+          tools = document.createElement("div");
+          tools.className = "tools active";
+          log.appendChild(tools);
+        }
+        const card = document.createElement("div");
+        card.className = "tool-card";
+        card.innerHTML =
+          '<span class="t-name">' + event.tool + "</span>" +
+          ' <span class="t-args">' + JSON.stringify(event.arguments || {}) + "</span>" +
+          ' <span class="t-args">…</span>';
+        tools.appendChild(card);
+        window.scrollTo(0, document.body.scrollHeight);
+        return card;
+      }
+
+      function setToolResult(card, event) {
+        const pre = document.createElement("div");
+        pre.className = String(event.result).startsWith("ERROR:")
+          ? "t-result t-error"
+          : "t-result";
+        pre.textContent = String(event.result);
+        card.appendChild(pre);
+      }
+
+      async function sendMessage() {
+        const text = input.value.trim();
+        if (!text || busy) return;
+        input.value = "";
+        busy = true;
+        send.disabled = true;
+
+        bubble("user", text);
+        const assistant = bubble("assistant", "");
+        const thinking = document.createElement("div");
+        thinking.className = "thinking";
+        thinking.textContent = "思考中…";
+        log.appendChild(thinking);
+
+        let answering = "";
+        const toolCards = new Map();
+        try {
+          const resp = await fetch("/api/chat/stream", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ message: text, session_id: sessionId }),
+          });
+          if (!resp.ok || !resp.body) throw new Error("HTTP " + resp.status);
+
+          const reader = resp.body.getReader();
+          const decoder = new TextDecoder();
+          let buffer = "";
+          while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+            buffer += decoder.decode(value, { stream: true });
+            const frames = buffer.split("\n\n");
+            buffer = frames.pop();
+            for (const frame of frames) {
+              const line = frame.split("\n").find((l) => l.startsWith("data: "));
+              if (!line) continue;
+              const event = JSON.parse(line.slice(6));
+              if (event.type === "chunk") {
+                answering += event.text;
+                assistant.textContent = answering;
+                window.scrollTo(0, document.body.scrollHeight);
+              } else if (event.type === "tool_call") {
+                clearThinking();
+                const card = addToolCard(event);
+                toolCards.set(event.index, card);
+              } else if (event.type === "tool_result") {
+                clearThinking();
+                const card = toolCards.get(event.index);
+                if (card) setToolResult(card, event);
+                assistant.textContent = answering;
+              } else if (event.type === "done") {
+                answering = event.answer || answering;
+                assistant.textContent = answering;
+                if (!event.ok) {
+                  const err = document.createElement("div");
+                  err.className = "t-result t-error";
+                  err.textContent = "[失败] 未完成，请换一种问法。";
+                  assistant.appendChild(err);
+                }
+              }
+            }
+          }
+        } catch (err) {
+          assistant.textContent = "请求失败: " + err.message;
+        } finally {
+          clearThinking();
+          busy = false;
+          send.disabled = false;
+          input.focus();
+        }
+      }
+
+      form.addEventListener("submit", (e) => {
+        e.preventDefault();
+        sendMessage();
+      });
+
+      fetch("/api/health")
+        .then((r) => r.json())
+        .then((d) => {
+          document.getElementById("model-label").textContent = "model: " + d.model;
+        })
+        .catch(() => {});
+
+      fetch("/api/tools")
+        .then((r) => r.json())
+        .then((d) => {
+          statusbar.textContent = "可用工具: " + d.tools.map((t) => t.name).join(" · ");
+        })
+        .catch(() => {});
+    </script>
   </body>
 </html>

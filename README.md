@@ -69,6 +69,15 @@ python run_server.py
 # 打开 http://localhost:8001
 ```
 
+API 一览：
+
+| 接口 | 方法 | 说明 |
+|------|------|------|
+| `/api/chat` | POST | 非流式问答，返回 `{answer, trace, turns, ok}` |
+| `/api/chat/stream` | POST | SSE 流式；事件 `chunk` / `tool_call` / `tool_result` / `done` |
+| `/api/tools` | GET | 列出全部已注册工具 |
+| `/api/health` | GET | 服务与模型状态 |
+
 ## 关键设计取舍
 
 - **自研循环而非 LangChain / LlamaIndex**：协议每一步都显式可控、可手讲，这正是本课题的目的。
@@ -81,7 +90,7 @@ python run_server.py
 - [x] M1 — 脚手架（pyproject、config、目录结构、PRD）
 - [x] M2 — 工具层（registry + 4 个工具）+ seed 脚本
 - [x] M3 — Agent 循环 + CLI（chat / repl / tools / seed）
-- [ ] M4 — API + SSE + Web UI
+- [x] M4 — API + SSE + Web UI（FastAPI + 流式对话页）
 - [ ] M5 — 测试补全 + README 打磨
 
 详见 [docs/PRD.md](docs/PRD.md)。
