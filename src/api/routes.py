@@ -74,8 +74,12 @@ def _ollama_model_names() -> list[str]:
 
 @router.get("/models", response_model=ModelsResponse)
 def list_models() -> ModelsResponse:
-    models = _ollama_model_names()
-    return ModelsResponse(current=settings.ollama_model, models=models or [settings.ollama_model])
+    models = _ollama_model_names() or [settings.ollama_model]
+    current = settings.ollama_model
+    if current not in models:
+        # 短别名（如 qwen2.5）对不上 Ollama 实际 tag（qwen2.5:latest）时归一化，保证可选中
+        current = next((m for m in models if m.startswith(f"{current}:")), models[0])
+    return ModelsResponse(current=current, models=models)
 
 
 def _warmup_model(model: str) -> None:

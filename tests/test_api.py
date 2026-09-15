@@ -143,6 +143,30 @@ def test_models_endpoint(monkeypatch: pytest.MonkeyPatch) -> None:
     assert body["current"] == "qwen2.5:latest"
 
 
+def test_models_endpoint_normalizes_short_alias(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(
+        "src.api.routes._ollama_model_names",
+        lambda: ["qwen2.5:latest", "qwen3:8b"],
+    )
+    from src.config import settings
+
+    monkeypatch.setattr(settings, "ollama_model", "qwen2.5")
+    body = client.get("/api/models").json()
+    assert body["current"] == "qwen2.5:latest"
+    assert body["current"] in body["models"]
+
+
+def test_models_endpoint_falls_back_when_no_match(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(
+        "src.api.routes._ollama_model_names", lambda: ["qwen3:8b"]
+    )
+    from src.config import settings
+
+    monkeypatch.setattr(settings, "ollama_model", "gpt-4o")
+    body = client.get("/api/models").json()
+    assert body["current"] == "qwen3:8b"
+
+
 def test_select_model_switches_default(monkeypatch: pytest.MonkeyPatch) -> None:
     from src.config import settings
 

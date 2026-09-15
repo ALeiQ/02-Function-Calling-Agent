@@ -110,6 +110,10 @@
         currentModel = name;
         modelLabel.textContent = "model: " + name;
         modelSelect.value = name;
+        if (!modelSelect.value && modelSelect.options.length) {
+          modelSelect.value = modelSelect.options[0].value;
+          currentModel = modelSelect.value;
+        }
       }
 
       async function switchModel(name) {
