@@ -79,7 +79,7 @@ python run_server.py
 ## 进度 / 路线
 
 - [x] M1 — 脚手架（pyproject、config、目录结构、PRD）
-- [ ] M2 — 工具层（registry + 4 个工具）+ seed 脚本
+- [x] M2 — 工具层（registry + 4 个工具）+ seed 脚本
 - [ ] M3 — Agent 循环 + CLI
 - [ ] M4 — API + SSE + Web UI
 - [ ] M5 — 测试补全 + README 打磨

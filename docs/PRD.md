@@ -101,7 +101,7 @@
 ## 8. 里程碑
 
 1. 脚手架 + pyproject + config + 目录（✅ 完成）
-2. 工具层（registry + 4 工具）+ seed 脚本
+2. 工具层（registry + 4 工具）+ seed 脚本（✅ 完成）
 3. Agent 循环 + CLI
 4. API + SSE + Web UI
 5. 测试补全 + README（架构图 + trade-off）
