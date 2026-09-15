@@ -76,6 +76,14 @@ def test_parallel_tool_calls_in_one_turn(monkeypatch) -> None:
 
 
 def test_tool_error_returned_for_self_heal(monkeypatch) -> None:
+    class NoCityResp:
+        def raise_for_status(self) -> None:
+            pass
+
+        def json(self):
+            return {"results": []}
+
+    monkeypatch.setattr("src.tools.weather.requests.get", lambda *a, **k: NoCityResp())
     script = [
         _reply(tool_calls=[_tool_call("weather", {"city": "火星"})]),
         _reply("抱歉，城市「火星」不在支持列表中。"),
