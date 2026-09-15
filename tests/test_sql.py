@@ -72,3 +72,25 @@ def test_dispatch_via_agent_tools(demo_db, monkeypatch) -> None:
     call = {"function": {"name": "sql", "arguments": {"query": query}}}
     payload = json.loads(execute(call))
     assert payload["rows"] > 1
+
+
+def test_missing_database_error(monkeypatch) -> None:
+    from src.config import settings
+
+    missing = "/nonexistent/path/db.sqlite"
+    with pytest.raises(UnsafeQueryError):
+        run_query("SELECT 1", missing)
+    monkeypatch.setattr(settings, "db_path", missing)
+    result = execute({"function": {"name": "sql", "arguments": {"query": "SELECT 1"}}})
+    assert result.startswith("ERROR:")
+    assert "无法打开只读数据库" in result
+
+
+def test_bad_sql_error(demo_db: str) -> None:
+    with pytest.raises(UnsafeQueryError):
+        run_query("SELECT missing_column FROM employees", demo_db)
+    result = execute(
+        {"function": {"name": "sql", "arguments": {"query": "SELECT missing FROM employees"}}}
+    )
+    assert result.startswith("ERROR:")
+    assert "SQL 执行错误" in result

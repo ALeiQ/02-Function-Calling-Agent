@@ -84,6 +84,15 @@ API 一览：
 - **原生 `tools` 参数而非 ReAct 自由文本**：模型必须输出合法的结构化调用，原生模式最可靠——这是"结构化输出"考察点的答案。
 - **数据库工具采用只读 + 仅 SELECT 的 SQLite**：工具意味着攻击面扩大；DB 工具是安全意识的体现：`mode=ro` 连接、归一化 `SELECT`-only 校验、给模型返回可自愈的机器可读拒绝信息。
 - **天气用 mock 而非真实 API**：完全离线、确定性，测试稳定零网络；模块边界清楚，后续可无缝切换 wttr.in 或真实服务商。
+- **SSE 的 token 级流式转为单 chunk 降级**：Ollama 0.33.3 + `qwen2.5` 在 `stream: True` 与 `tools` 并存时返回空结果；为保证工具调用正确性，`chat_stream` 内部走非流式调用、把整段回答作为一个 chunk 事件下发，事件协议仍保持 `chunk / tool_call / tool_result / done`，后续换模型可平滑恢复逐字流式。
+
+## 测试
+
+```bash
+pytest                 # 89 个用例全绿（工具层 + loop + API + CLI，模型调用全程 mock）
+pytest --cov=src       # 覆盖率 99%（仅留 `__main__` 一行不可测）
+ruff check .           # lint 全绿
+```
 
 ## 进度 / 路线
 
@@ -91,6 +100,7 @@ API 一览：
 - [x] M2 — 工具层（registry + 4 个工具）+ seed 脚本
 - [x] M3 — Agent 循环 + CLI（chat / repl / tools / seed）
 - [x] M4 — API + SSE + Web UI（FastAPI + 流式对话页）
-- [ ] M5 — 测试补全 + README 打磨
+- [x] M5 — 测试补全（99% 覆盖率）+ README
+- [ ] M6 — 端到端验收
 
 详见 [docs/PRD.md](docs/PRD.md)。

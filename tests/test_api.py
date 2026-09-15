@@ -102,3 +102,15 @@ def test_index_served() -> None:
     resp = client.get("/")
     assert resp.status_code == 200
     assert "Function-Calling Agent" in resp.text
+
+
+def test_stream_endpoint_reports_generator_errors(monkeypatch: pytest.MonkeyPatch) -> None:
+    def exploding(message, session_id=None, store=None):
+        raise RuntimeError("kaboom")
+        yield
+
+    monkeypatch.setattr(loop, "chat_stream", exploding)
+    resp = client.post("/api/chat/stream", json={"message": "hi"})
+    assert resp.status_code == 200
+    assert "服务端错误" in resp.text
+    assert '"ok": false' in resp.text

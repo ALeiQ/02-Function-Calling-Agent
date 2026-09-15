@@ -104,7 +104,7 @@
 2. 工具层（registry + 4 工具）+ seed 脚本（✅ 完成）
 3. Agent 循环 + CLI（✅ 完成）
 4. API + SSE + Web UI（✅ 完成）
-5. 测试补全 + README（架构图 + trade-off）
+5. 测试补全（99% 覆盖率）+ README（架构图 + trade-off）（✅ 完成）
 6. 端到端验收
 
 ## 9. 风险与对策

@@ -94,3 +94,21 @@ def test_non_dict_arguments() -> None:
 def test_missing_function_field() -> None:
     result = execute({"not_function": {}})
     assert result.startswith("ERROR:")
+
+
+def test_decorator_requires_args_model() -> None:
+    def impl(x: str) -> str:
+        return x
+
+    with pytest.raises(ValueError):
+        tool(name="__no_args_tool__", description="无参数模型")(impl)
+
+
+def test_unexpected_exception_wrapped() -> None:
+    name = _make_test_tool(raises=RuntimeError)
+    try:
+        result = execute({"function": {"name": name, "arguments": {"x": "a"}}})
+        assert result.startswith("ERROR: 工具执行异常")
+        assert "RuntimeError" in result
+    finally:
+        _cleanup(name)

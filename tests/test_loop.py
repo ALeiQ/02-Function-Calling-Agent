@@ -183,3 +183,71 @@ def test_chat_stream_events_token_chunks(monkeypatch) -> None:
         {"type": "chunk", "text": "案是"},
     ]
     assert events[-1] == {"type": "done", "answer": "答案是", "trace": [], "turns": 1, "ok": True}
+
+
+def test_chat_once_wire_format(monkeypatch) -> None:
+    """The non-streaming call posts the expected /api/chat payload."""
+    class FakeResp:
+        def raise_for_status(self) -> None:
+            pass
+
+        def json(self):
+            return {"message": {"content": "ok", "tool_calls": []}}
+
+    captured: dict = {}
+
+    def fake_post(url, json, timeout, stream=None):
+        captured["url"] = url
+        captured["json"] = json
+        return FakeResp()
+
+    monkeypatch.setattr(loop._requests, "post", fake_post)
+    reply = loop._chat_once([{"role": "user", "content": "hi"}], [{"type": "function"}])
+    assert reply == {"content": "ok", "tool_calls": []}
+    assert captured["url"].endswith("/api/chat")
+    assert captured["json"]["stream"] is False
+    assert captured["json"]["model"] == settings.ollama_model
+    assert captured["json"]["options"]["temperature"] == settings.temperature
+
+
+def test_chat_once_http_error_reported(monkeypatch) -> None:
+    class BadResp:
+        def raise_for_status(self) -> None:
+            raise _requests.HTTPError("500 Internal Server Error")
+
+    monkeypatch.setattr(loop._requests, "post", lambda *a, **k: BadResp())
+    result = loop.chat("hi", store=SessionStore())
+    assert result["ok"] is False
+    assert "调用模型失败" in result["answer"]
+
+
+def test_chat_stream_once_delegates(monkeypatch) -> None:
+    monkeypatch.setattr(loop, "_chat_once", lambda m, t: _reply("答案"))
+    kind, payload = next(loop._chat_stream_once([], []))
+    assert kind == "message"
+    assert payload == _reply("答案")
+
+
+def test_chat_stream_request_exception(monkeypatch) -> None:
+    def failing(messages, tools):
+        raise _requests.ConnectionError("boom")
+        yield
+
+    monkeypatch.setattr(loop, "_chat_stream_once", failing)
+    events = list(loop.chat_stream("hi", store=SessionStore()))
+    assert events[-1]["ok"] is False
+    assert "调用模型失败" in events[-1]["answer"]
+    assert events[-1]["turns"] == 1
+
+
+def test_chat_stream_turn_cap(monkeypatch) -> None:
+    monkeypatch.setattr(settings, "max_turns", 2)
+
+    def always_tool(messages, tools):
+        yield "message", _reply(tool_calls=[_tool_call("now", {})])
+
+    monkeypatch.setattr(loop, "_chat_stream_once", always_tool)
+    events = list(loop.chat_stream("hi", store=SessionStore()))
+    assert events[-1]["ok"] is False
+    assert "最大调用轮数" in events[-1]["answer"]
+    assert events[-1]["turns"] == 2
