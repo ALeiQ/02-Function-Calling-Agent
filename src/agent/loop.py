@@ -54,7 +54,7 @@ def _chat_once(
             "options": {"temperature": settings.temperature},
             "stream": False,
         },
-        timeout=300,
+        timeout=180,
     )
     resp.raise_for_status()
     return resp.json()["message"]

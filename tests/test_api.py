@@ -150,13 +150,49 @@ def test_select_model_switches_default(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(
         "src.api.routes._ollama_model_names", lambda: ["qwen2.5:latest", "qwen3:8b"]
     )
+    warmed: list[str] = []
+    monkeypatch.setattr(
+        "src.api.routes._warmup_model", lambda m: warmed.append(m)
+    )
     resp = client.post("/api/model", json={"model": "qwen3:8b"})
     assert resp.status_code == 200
     assert resp.json()["model"] == "qwen3:8b"
     assert settings.ollama_model == "qwen3:8b"
+    assert warmed == ["qwen3:8b"]
 
 
 def test_select_model_not_found(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr("src.api.routes._ollama_model_names", lambda: ["qwen2.5:latest"])
     resp = client.post("/api/model", json={"model": "gpt-4o"})
     assert resp.status_code == 404
+
+
+def test_warmup_model_preloads(monkeypatch: pytest.MonkeyPatch) -> None:
+    import threading
+
+    from src.api import routes
+
+    captured: dict = {}
+
+    def fake_post(url, json, timeout):
+        captured["url"] = url
+        captured["json"] = json
+        return type("R", (), {"raise_for_status": lambda self: None})()
+
+    class SyncThread:
+        def __init__(self, target, daemon=False):
+            self._target = target
+
+        def start(self):
+            self._target()
+
+    monkeypatch.setattr(threading, "Thread", SyncThread)
+    monkeypatch.setattr(routes.requests, "post", fake_post)
+    routes._warmup_model("qwen3:8b")
+    assert captured["url"].endswith("/api/chat")
+    assert captured["json"] == {
+        "model": "qwen3:8b",
+        "messages": [],
+        "stream": False,
+        "warmup": True,
+    }

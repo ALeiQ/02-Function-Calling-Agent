@@ -90,6 +90,7 @@
       const modelLabel = document.getElementById("model-label");
       let currentModel = null;
       let busy = false;
+      const STREAM_TIMEOUT = 120000;
 
       function setCurrentModel(name) {
         currentModel = name;
@@ -167,6 +168,17 @@
         thinking.textContent = "思考中…";
         log.appendChild(thinking);
 
+        const controller = new AbortController();
+        let lastActivity = Date.now();
+        const ticker = setInterval(() => {
+          thinking.textContent =
+            "思考中…(已等待 " + Math.round((Date.now() - lastActivity) / 1000) + "s)";
+        }, 1000);
+        const watchdog = setInterval(() => {
+          if (Date.now() - lastActivity > STREAM_TIMEOUT) controller.abort();
+        }, 5000);
+        const touch = () => { lastActivity = Date.now(); };
+
         let answering = "";
         const toolCards = new Map();
         try {
@@ -174,6 +186,7 @@
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ message: text, session_id: sessionId, model: currentModel }),
+            signal: controller.signal,
           });
           if (!resp.ok || !resp.body) throw new Error("HTTP " + resp.status);
 
@@ -183,6 +196,7 @@
           while (true) {
             const { done, value } = await reader.read();
             if (done) break;
+            touch();
             buffer += decoder.decode(value, { stream: true });
             const frames = buffer.split("\n\n");
             buffer = frames.pop();
@@ -191,19 +205,23 @@
               if (!line) continue;
               const event = JSON.parse(line.slice(6));
               if (event.type === "chunk") {
+                touch();
                 answering += event.text;
                 assistant.textContent = answering;
                 window.scrollTo(0, document.body.scrollHeight);
               } else if (event.type === "tool_call") {
+                touch();
                 clearThinking();
                 const card = addToolCard(event);
                 toolCards.set(event.index, card);
               } else if (event.type === "tool_result") {
+                touch();
                 clearThinking();
                 const card = toolCards.get(event.index);
                 if (card) setToolResult(card, event);
                 assistant.textContent = answering;
               } else if (event.type === "done") {
+                touch();
                 answering = event.answer || answering;
                 assistant.textContent = answering;
                 if (!event.ok) {
@@ -216,8 +234,13 @@
             }
           }
         } catch (err) {
-          assistant.textContent = "请求失败: " + err.message;
+          assistant.textContent =
+            err.name === "AbortError"
+              ? "请求超时（120s 无数据），已中止，请重试。"
+              : "请求失败: " + err.message;
         } finally {
+          clearInterval(watchdog);
+          clearInterval(ticker);
           clearThinking();
           busy = false;
           send.disabled = false;

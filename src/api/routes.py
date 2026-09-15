@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import threading
 from collections.abc import Generator
 from typing import Any
 
@@ -68,6 +69,22 @@ def list_models() -> ModelsResponse:
     return ModelsResponse(current=settings.ollama_model, models=models or [settings.ollama_model])
 
 
+def _warmup_model(model: str) -> None:
+    """Preload a model in Ollama so the first real chat is fast (best-effort)."""
+
+    def run() -> None:
+        try:
+            requests.post(
+                f"{settings.ollama_base_url}/api/chat",
+                json={"model": model, "messages": [], "stream": False, "warmup": True},
+                timeout=15,
+            )
+        except requests.RequestException:
+            pass
+
+    threading.Thread(target=run, daemon=True).start()
+
+
 @router.post("/model", response_model=ModelSelectResponse)
 def select_model(request: ModelSelectRequest) -> ModelSelectResponse:
     """Switch the server-wide default model (validated against local Ollama)."""
@@ -78,6 +95,7 @@ def select_model(request: ModelSelectRequest) -> ModelSelectResponse:
             detail=f"模型不可用: {request.model}（需要已安装且支持 tools）",
         )
     settings.ollama_model = request.model
+    _warmup_model(request.model)
     return ModelSelectResponse(model=request.model)
 
 
