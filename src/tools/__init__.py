@@ -1,0 +1,1 @@
+"""Tool layer: registry, schemas and concrete tool implementations."""

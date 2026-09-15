@@ -1,0 +1,33 @@
+[project]
+name = "function-calling-agent"
+version = "0.1.0"
+description = "Function-calling agent with tool registry, structured output and multi-turn loop"
+requires-python = ">=3.9"
+dependencies = [
+    "ollama>=0.4",
+    "pydantic-settings>=2.0",
+    "typer>=0.12",
+    "rich>=13.0",
+    "fastapi>=0.115",
+    "uvicorn[standard]>=0.30",
+    "python-dotenv>=1.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0",
+    "ruff>=0.8",
+]
+
+[project.scripts]
+fc-agent = "src.main:app"
+
+[tool.ruff]
+line-length = 100
+target-version = "py39"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "N", "W"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

@@ -1,0 +1,78 @@
+digraph FunctionCallingAgent {
+    rankdir = LR;
+    splines = spline;
+    nodesep = 0.5;
+    ranksep = 0.9;
+    graph [
+        fontname = "PingFang SC"
+        label = "Function-Calling Agent 架构"
+        labelloc = t
+        fontsize = 22
+        pad = 0.4
+    ];
+    node [
+        fontname = "PingFang SC"
+        shape = box
+        style = "rounded,filled"
+        fontsize = 14
+    ];
+    edge [
+        fontname = "PingFang SC"
+        fontsize = 12
+    ];
+
+    user [ label = "用户", fillcolor = "#dbeafe", color = "#3b82f6" ];
+
+    subgraph cluster_frontend {
+        label = "前端入口"
+        fontsize = 13
+        style = dashed
+        color = "#94a3b8"
+        cli [ label = "CLI\n(typer 命令)", fillcolor = "#d1fae5", color = "#10b981" ];
+        webui [ label = "Web UI\n(static 页面)", fillcolor = "#d1fae5", color = "#10b981" ];
+    }
+
+    api [ label = "FastAPI\n/chat · /chat/stream (SSE)", fillcolor = "#ede9fe", color = "#8b5cf6" ];
+
+    loop [ label = "Agent Loop\n多轮循环 · max_turns 兜底", fillcolor = "#fef3c7", color = "#f59e0b" ];
+
+    ollama [ label = "Ollama /api/chat\nmessages + tool schemas", fillcolor = "#fee2e2", color = "#ef4444" ];
+    registry [ label = "Registry\npydantic 校验 + 安全分派", fillcolor = "#ccfbf1", color = "#14b8a6" ];
+
+    subgraph cluster_tools {
+        label = "工具集"
+        fontsize = 13
+        style = dashed
+        color = "#94a3b8"
+        calculator [ label = "calculator\nast 安全求值", fillcolor = "#ccfbf1", color = "#14b8a6" ];
+        weather [ label = "weather\nmock 离线数据", fillcolor = "#ccfbf1", color = "#14b8a6" ];
+        sql [ label = "sql\n只读 + SELECT-only", fillcolor = "#ccfbf1", color = "#14b8a6" ];
+        now [ label = "now\n当前日期 / 时间", fillcolor = "#ccfbf1", color = "#14b8a6" ];
+    }
+
+    sqlite [ label = "SQLite (demo)\nmode=ro 只读连接", fillcolor = "#f1f5f9", color = "#64748b" ];
+
+    user -> cli [ label = "用户输入" ];
+    user -> webui;
+    cli -> api;
+    webui -> api;
+    api -> loop;
+    loop -> ollama [ label = "消息 + 工具 Schema" ];
+    loop -> registry [ label = "tool_calls" ];
+    ollama -> calculator;
+    ollama -> weather;
+    registry -> sql;
+    registry -> now;
+    sql -> sqlite;
+
+    registry -> loop [
+        label = "执行结果（成功 / 报错）回填"
+        style = dashed
+        constraint = false
+    ];
+    loop -> api [
+        label = "最终回答"
+        style = dashed
+        constraint = false
+    ];
+}
