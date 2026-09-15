@@ -101,6 +101,6 @@ ruff check .           # lint 全绿
 - [x] M3 — Agent 循环 + CLI（chat / repl / tools / seed）
 - [x] M4 — API + SSE + Web UI（FastAPI + 流式对话页）
 - [x] M5 — 测试补全（99% 覆盖率）+ README
-- [ ] M6 — 端到端验收
+- [x] M6 — 端到端验收（ClI + Web 三场景 + 护栏拦截）
 
 详见 [docs/PRD.md](docs/PRD.md)。
