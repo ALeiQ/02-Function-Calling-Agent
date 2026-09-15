@@ -54,11 +54,11 @@ def patch_http(
 
     def fake_get(url, params=None, timeout=None, **kwargs):
         urls.append(url)
-        if "geoapi.qweather.com" in url:
+        if "city/lookup" in url:
             if qw_error:
                 raise qw_error
             return FakeResponse({"code": qw_geo_code, "location": qw_geo})
-        if "devapi.qweather.com" in url:
+        if "v7/weather/now" in url:
             if qw_error:
                 raise qw_error
             return FakeResponse({"code": qw_now_code, "now": qw_now})
@@ -116,6 +116,23 @@ def test_qweather_result_win_when_openmeteo_unknown(monkeypatch: pytest.MonkeyPa
     patch_http(monkeypatch, om_results=[], qw_geo=[_LAIYANG_QW], qw_now=_QW_NOW)
     result = get_weather("莱阳")
     assert "（来源: 和风天气）" in result
+
+
+def test_qweather_uses_personal_api_host(monkeypatch: pytest.MonkeyPatch) -> None:
+    from src.config import settings
+
+    monkeypatch.setattr(settings, "qweather_api_key", "test-key")
+    monkeypatch.setattr(settings, "qweather_base_url", "https://nv33jruyx8.re.qweatherapi.com")
+    urls = patch_http(
+        monkeypatch,
+        om_results=[_LAIYANG_OM],
+        qw_geo=[_LAIYANG_QW],
+        qw_now=_QW_NOW,
+    )
+    result = get_weather("莱阳")
+    assert "（来源: 和风天气）" in result
+    assert any("nv33jruyx8.re.qweatherapi.com/geo/v2/city/lookup" in u for u in urls)
+    assert any("nv33jruyx8.re.qweatherapi.com/v7/weather/now" in u for u in urls)
 
 
 def test_http_error_falls_back_to_other_provider(monkeypatch: pytest.MonkeyPatch) -> None:

@@ -70,7 +70,7 @@ python run_server.py
 # 打开 http://localhost:8001
 ```
 
-配置：复制 `.env.example` 为 `.env`（或参考其注释）。天气工具可选接入和风天气（推荐，地县级城市更准）：在[和风天气控制台](https://console.qweather.com)注册免费订阅后，把 `QWEATHER_API_KEY=你的Key` 填进 `.env`；未配置时自动退化为 Open-Meteo（免 key）。
+配置：复制 `.env.example` 为 `.env`（或参考其注释）。天气工具可选接入和风天气（推荐，地县级城市更准）：在[和风天气控制台](https://console.qweather.com)开通后，把 `QWEATHER_API_KEY=你的Key` 与 `QWEATHER_BASE_URL=你的专属API Host`（控制台-设置里形如 `xxx.re.qweatherapi.com`）填进 `.env`；每月前 5 万次请求免费（¥0）。未配置时自动退化为 Open-Meteo（免 key）。
 
 API 一览：
 

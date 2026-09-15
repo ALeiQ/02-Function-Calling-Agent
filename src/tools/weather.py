@@ -128,6 +128,18 @@ def _normalize_city(city: str) -> str:
     return city
 
 
+def _qweather_urls() -> tuple[str, str]:
+    """Return (geo lookup url, weather now url) for QWeather.
+
+    A personal API Host (``qweather_base_url``, e.g. ``nv33jruyx8.re.qweatherapi.com``)
+    takes precedence; otherwise the legacy public hosts are used.
+    """
+    base = settings.qweather_base_url.rstrip("/")
+    if base:
+        return f"{base}/geo/v2/city/lookup", f"{base}/v7/weather/now"
+    return _QW_GEO_URL, _QW_NOW_URL
+
+
 def _geocode(city: str) -> tuple[float, float, str] | None:
     """Resolve a city name via Open-Meteo; None when the name is unknown."""
     resp = requests.get(
@@ -198,9 +210,10 @@ def _qweather(city: str) -> WeatherResult:
         raise ToolError("未配置和风天气 QWEATHER_API_KEY")
 
     lookup_city = _normalize_city(city) or city
+    geo_url, now_url = _qweather_urls()
     try:
         resp = requests.get(
-            _QW_GEO_URL,
+            geo_url,
             params={"location": lookup_city, "key": settings.qweather_api_key, "number": 1},
             timeout=_TIMEOUT,
         )
@@ -210,7 +223,7 @@ def _qweather(city: str) -> WeatherResult:
             raise ToolError(f"和风天气城市检索失败(code={geo.get('code')})")
         loc = geo["location"][0]
         resp_now = requests.get(
-            _QW_NOW_URL,
+            now_url,
             params={"location": loc["id"], "key": settings.qweather_api_key},
             timeout=_TIMEOUT,
         )
