@@ -2,9 +2,27 @@ from __future__ import annotations
 
 import typer
 from rich.console import Console
+from rich.panel import Panel
 
 app = typer.Typer(help="Function-Calling Agent")
 console = Console()
+
+
+def _print_answer(result: dict, show_trace: bool = True) -> None:
+    if show_trace and result.get("trace"):
+        calls = [
+            f"[cyan]{entry['tool']}[/cyan] {entry['arguments']} → "
+            f"{entry['result'][:300]}{'…' if len(entry['result']) > 300 else ''}"
+            for entry in result["trace"]
+        ]
+        console.print(
+            Panel(
+                "\n".join(f"  {i + 1}. {call}" for i, call in enumerate(calls)),
+                title="工具调用轨迹",
+                border_style="dim",
+            )
+        )
+    console.print(f"[bold]回答:[/bold] {result.get('answer', '')}")
 
 
 @app.command()
@@ -12,15 +30,38 @@ def chat(message: str = typer.Argument(..., help="Question to ask the agent")):
     """Ask the agent once (full multi-turn tool loop)."""
     from src.agent.loop import chat as run
 
-    with console.status("[bold blue]Agent is thinking..."):
+    with console.status("[bold blue]Agent 正在思考..."):
         result = run(message)
-    console.print(result)
+    _print_answer(result)
 
 
 @app.command()
 def repl():
     """Start an interactive chat session."""
-    raise NotImplementedError("TODO(milestone 2): interactive REPL.")
+    from src.agent.loop import chat as run
+    from src.agent.session import SessionStore
+
+    store = SessionStore()
+    session_id = "cli"
+    console.print("[bold green]会话开始，输入 /exit 退出，/clear 清空历史。[/bold green]")
+    while True:
+        try:
+            line = input("[bold]you>[/bold] ")
+        except (EOFError, KeyboardInterrupt):
+            console.print("\n[dim]再见[/dim]")
+            raise typer.Exit(0)
+        message = line.strip()
+        if not message:
+            continue
+        if message == "/exit":
+            raise typer.Exit(0)
+        if message == "/clear":
+            store.clear(session_id)
+            console.print("[dim]已清空会话历史[/dim]")
+            continue
+        with console.status("[bold blue]Agent 正在思考..."):
+            result = run(message, session_id=session_id, store=store)
+        _print_answer(result, show_trace=True)
 
 
 @app.command()
