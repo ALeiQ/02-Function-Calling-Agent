@@ -135,6 +135,8 @@ def _qweather_urls() -> tuple[str, str]:
     takes precedence; otherwise the legacy public hosts are used.
     """
     base = settings.qweather_base_url.rstrip("/")
+    if base and not base.startswith(("http://", "https://")):
+        base = f"https://{base}"
     if base:
         return f"{base}/geo/v2/city/lookup", f"{base}/v7/weather/now"
     return _QW_GEO_URL, _QW_NOW_URL
