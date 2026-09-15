@@ -38,6 +38,12 @@
         font-size: 13px; padding: 4px 8px; border: 1px solid var(--border); border-radius: 8px;
         background: var(--card); color: var(--text); max-width: 220px;
       }
+      header button {
+        font-size: 12px; padding: 4px 10px; margin-left: auto;
+        border: 1px solid var(--border); border-radius: 8px;
+        background: var(--card); color: var(--muted); cursor: pointer;
+      }
+      header button:hover { color: var(--text); }
       main { max-width: 760px; margin: 0 auto; padding: 20px 16px 120px; }
       .msg { max-width: 640px; margin: 12px 0; padding: 10px 14px; border-radius: 12px; white-space: pre-wrap; line-height: 1.55; }
       .msg.user { background: var(--user); margin-left: auto; }
@@ -67,6 +73,7 @@
       <h1>Function-Calling Agent</h1>
       <select id="model" title="切换模型"></select>
       <span class="sub" id="model-label"></span>
+      <button id="new-chat" type="button" title="清空当前会话，开始新对话">新对话</button>
     </header>
 
     <main id="log"></main>
@@ -80,7 +87,9 @@
     </div>
 
     <script>
-      const sessionId = crypto.randomUUID().slice(0, 8);
+      const sessionId =
+        localStorage.getItem("fc_sid") || crypto.randomUUID().slice(0, 8);
+      localStorage.setItem("fc_sid", sessionId);
       const log = document.getElementById("log");
       const form = document.getElementById("form");
       const input = document.getElementById("input");
@@ -153,6 +162,41 @@
         pre.textContent = String(event.result);
         card.appendChild(pre);
       }
+
+      function restoreHistory(messages) {
+        let tools = null;
+        for (const msg of messages) {
+          if (msg.role === "user") {
+            tools = null;
+            bubble("user", msg.content);
+          } else if (msg.role === "tool") {
+            if (!tools) {
+              tools = document.createElement("div");
+              tools.className = "tools active";
+              tools.innerHTML = "<summary>工具调用</summary>";
+              log.appendChild(tools);
+            }
+            const card = document.createElement("div");
+            card.className = "tool-card";
+            card.innerHTML =
+              '<span class="t-name">' + msg.name + "</span>" +
+              ' <span class="t-args">' + JSON.stringify(msg.content) + "</span>";
+            tools.appendChild(card);
+          } else if (msg.role === "assistant" && msg.content) {
+            bubble("assistant", msg.content);
+          }
+        }
+      }
+
+      fetch("/api/sessions/" + sessionId)
+        .then((r) => r.json())
+        .then((d) => restoreHistory(d.messages || []))
+        .catch(() => {});
+
+      document.getElementById("new-chat").addEventListener("click", () => {
+        localStorage.removeItem("fc_sid");
+        location.reload();
+      });
 
       async function sendMessage() {
         const text = input.value.trim();

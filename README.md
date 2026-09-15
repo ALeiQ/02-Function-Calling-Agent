@@ -78,7 +78,8 @@ API 一览：
 | `/api/chat/stream` | POST | SSE 流式；事件 `chunk` / `tool_call` / `tool_result` / `done` |
 | `/api/tools` | GET | 列出全部已注册工具 |
 | `/api/models` | GET | 列出本机支持工具调用的 Ollama 模型及当前默认模型 |
-| `/api/model` | POST | 切换服务端默认模型，body `{"model": "名称"}` |
+| `/api/model` | POST | 切换服务端默认模型，body `{"model": "名称"}`，成功后后台预热加载 |
+| `/api/sessions/{id}` | GET | 读取某会话的历史消息（页面刷新恢复上下文用）|
 | `/api/health` | GET | 服务与模型状态 |
 
 ## 关键设计取舍

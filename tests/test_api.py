@@ -196,3 +196,26 @@ def test_warmup_model_preloads(monkeypatch: pytest.MonkeyPatch) -> None:
         "stream": False,
         "warmup": True,
     }
+
+
+def test_session_history_returns_messages() -> None:
+    from src.api import routes
+
+    sess = routes.default_store.get_or_create("sess1")
+    sess.add({"role": "user", "content": "你好"})
+    sess.add({"role": "tool", "content": "42", "name": "calculator"})
+    sess.add({"role": "assistant", "content": "答案是 42"})
+    resp = client.get("/api/sessions/sess1")
+    assert resp.status_code == 200
+    assert resp.json()["session_id"] == "sess1"
+    roles = [m["role"] for m in resp.json()["messages"]]
+    assert roles == ["user", "tool", "assistant"]
+
+
+def test_session_history_filters_system() -> None:
+    from src.api import routes
+
+    sess = routes.default_store.get_or_create("sess2")
+    sess.add({"role": "system", "content": "SYSTEM"})
+    resp = client.get("/api/sessions/sess2")
+    assert resp.json()["messages"] == []

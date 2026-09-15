@@ -20,6 +20,7 @@ from src.api.schemas import (
     ModelSelectRequest,
     ModelSelectResponse,
     ModelsResponse,
+    SessionResponse,
     ToolInfo,
     ToolsResponse,
 )
@@ -41,6 +42,14 @@ def tools() -> ToolsResponse:
         for d in registry()
     ]
     return ToolsResponse(tools=defs)
+
+
+@router.get("/sessions/{session_id}", response_model=SessionResponse)
+def session_history(session_id: str) -> SessionResponse:
+    """Return the stored messages for a session (UI history restore on refresh)."""
+    sess = default_store.get_or_create(session_id)
+    messages = [m for m in sess.messages if m.get("role") != "system"]
+    return SessionResponse(session_id=session_id, messages=messages)
 
 
 def _ollama_model_names() -> list[str]:

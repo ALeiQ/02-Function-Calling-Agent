@@ -53,3 +53,8 @@ class ModelSelectResponse(BaseModel):
 class HealthResponse(BaseModel):
     status: str
     model: str
+
+
+class SessionResponse(BaseModel):
+    session_id: str
+    messages: list[dict] = []
