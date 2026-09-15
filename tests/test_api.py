@@ -35,7 +35,7 @@ def test_tools() -> None:
 
 
 def test_chat(monkeypatch: pytest.MonkeyPatch) -> None:
-    def fake_chat(message, session_id=None, store=None):
+    def fake_chat(message, session_id=None, store=None, model=None):
         return {
             "answer": "42",
             "trace": [
@@ -55,6 +55,19 @@ def test_chat(monkeypatch: pytest.MonkeyPatch) -> None:
     assert body["trace"][0]["tool"] == "calculator"
 
 
+def test_chat_model_override_reaches_loop(monkeypatch: pytest.MonkeyPatch) -> None:
+    seen: dict[str, object] = {}
+
+    def fake_chat(message, session_id=None, store=None, model=None):
+        seen["model"] = model
+        return {"answer": "hi", "trace": [], "turns": 1, "ok": True}
+
+    monkeypatch.setattr(loop, "chat", fake_chat)
+    resp = client.post("/api/chat", json={"message": "hi", "model": "qwen3:8b"})
+    assert resp.status_code == 200
+    assert seen["model"] == "qwen3:8b"
+
+
 def test_chat_requires_message() -> None:
     resp = client.post("/api/chat", json={"message": ""})
     assert resp.status_code == 422
@@ -69,7 +82,7 @@ def test_chat_stream_sse(monkeypatch: pytest.MonkeyPatch) -> None:
         {"type": "done", "answer": "现在是中午。", "trace": [], "turns": 2, "ok": True},
     ]
 
-    def fake_stream(message, session_id=None, store=None):
+    def fake_stream(message, session_id=None, store=None, model=None):
         yield from events
 
     monkeypatch.setattr(loop, "chat_stream", fake_stream)
@@ -85,7 +98,7 @@ def test_chat_stream_sse(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 def test_streaming_chunks_reach_client(monkeypatch: pytest.MonkeyPatch) -> None:
-    def fake_stream(message, session_id=None, store=None):
+    def fake_stream(message, session_id=None, store=None, model=None):
         yield {"type": "chunk", "text": "你"}
         yield {"type": "chunk", "text": "好"}
         yield {"type": "done", "answer": "你好", "trace": [], "turns": 1, "ok": True}
@@ -105,7 +118,7 @@ def test_index_served() -> None:
 
 
 def test_stream_endpoint_reports_generator_errors(monkeypatch: pytest.MonkeyPatch) -> None:
-    def exploding(message, session_id=None, store=None):
+    def exploding(message, session_id=None, store=None, model=None):
         raise RuntimeError("kaboom")
         yield
 
@@ -114,3 +127,36 @@ def test_stream_endpoint_reports_generator_errors(monkeypatch: pytest.MonkeyPatc
     assert resp.status_code == 200
     assert "服务端错误" in resp.text
     assert '"ok": false' in resp.text
+
+
+def test_models_endpoint(monkeypatch: pytest.MonkeyPatch) -> None:
+    available = ["qwen2.5:latest", "qwen3:8b"]
+    monkeypatch.setattr("src.api.routes._ollama_model_names", lambda: available)
+    from src.config import settings
+
+    monkeypatch.setattr(settings, "ollama_model", "qwen2.5:latest")
+    resp = client.get("/api/models")
+    assert resp.status_code == 200
+    body = resp.json()
+    assert "qwen2.5:latest" in body["models"]
+    assert "qwen3:8b" in body["models"]
+    assert body["current"] == "qwen2.5:latest"
+
+
+def test_select_model_switches_default(monkeypatch: pytest.MonkeyPatch) -> None:
+    from src.config import settings
+
+    monkeypatch.setattr(settings, "ollama_model", "qwen2.5:latest")
+    monkeypatch.setattr(
+        "src.api.routes._ollama_model_names", lambda: ["qwen2.5:latest", "qwen3:8b"]
+    )
+    resp = client.post("/api/model", json={"model": "qwen3:8b"})
+    assert resp.status_code == 200
+    assert resp.json()["model"] == "qwen3:8b"
+    assert settings.ollama_model == "qwen3:8b"
+
+
+def test_select_model_not_found(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr("src.api.routes._ollama_model_names", lambda: ["qwen2.5:latest"])
+    resp = client.post("/api/model", json={"model": "gpt-4o"})
+    assert resp.status_code == 404

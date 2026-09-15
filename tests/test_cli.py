@@ -19,7 +19,7 @@ def test_tools_command_lists_names() -> None:
 
 
 def test_chat_command_prints_answer(monkeypatch: pytest.MonkeyPatch) -> None:
-    def fake_chat(message, session_id=None, store=None):
+    def fake_chat(message, session_id=None, store=None, model=None):
         return {"answer": "你好世界", "trace": [], "turns": 1, "ok": True}
 
     monkeypatch.setattr(loop, "chat", fake_chat)
@@ -28,8 +28,21 @@ def test_chat_command_prints_answer(monkeypatch: pytest.MonkeyPatch) -> None:
     assert "你好世界" in result.output
 
 
+def test_chat_command_with_model(monkeypatch: pytest.MonkeyPatch) -> None:
+    seen: dict[str, object] = {}
+
+    def fake_chat(message, session_id=None, store=None, model=None):
+        seen["model"] = model
+        return {"answer": "h", "trace": [], "turns": 1, "ok": True}
+
+    monkeypatch.setattr(loop, "chat", fake_chat)
+    result = runner.invoke(app, ["chat", "hi", "--model", "qwen3:8b"])
+    assert result.exit_code == 0
+    assert seen["model"] == "qwen3:8b"
+
+
 def test_chat_command_prints_trace(monkeypatch: pytest.MonkeyPatch) -> None:
-    def fake_chat(message, session_id=None, store=None):
+    def fake_chat(message, session_id=None, store=None, model=None):
         return {
             "answer": "结果是 6",
             "trace": [{"tool": "calculator", "arguments": {"expression": "3*2"}, "result": "6"}],
@@ -105,3 +118,29 @@ def test_repl_eof_exits_gracefully() -> None:
     result = runner.invoke(app, ["repl"], input="")
     assert result.exit_code == 0
     assert "再见" in result.output
+
+
+def test_repl_initial_model_flag(monkeypatch: pytest.MonkeyPatch) -> None:
+    from src.config import settings
+
+    monkeypatch.setattr(settings, "ollama_model", "qwen2.5")
+    monkeypatch.setattr(
+        loop, "chat", lambda *a, **kw: {"answer": "a", "trace": [], "turns": 1, "ok": True}
+    )
+    result = runner.invoke(app, ["repl", "--model", "qwen3:8b"], input="/exit\n")
+    assert result.exit_code == 0
+    assert "qwen3:8b" in result.output
+    assert settings.ollama_model == "qwen3:8b"
+
+
+def test_repl_model_switch_command(monkeypatch: pytest.MonkeyPatch) -> None:
+    from src.config import settings
+
+    monkeypatch.setattr(settings, "ollama_model", "qwen2.5")
+    monkeypatch.setattr(
+        loop, "chat", lambda *a, **kw: {"answer": "a", "trace": [], "turns": 1, "ok": True}
+    )
+    result = runner.invoke(app, ["repl"], input="/model qwen3:8b\n/exit\n")
+    assert result.exit_code == 0
+    assert "已切换模型" in result.output
+    assert settings.ollama_model == "qwen3:8b"

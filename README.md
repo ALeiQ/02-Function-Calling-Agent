@@ -58,8 +58,9 @@ ollama pull qwen2.5       # 需要 Ollama 0.5.3+
 # 先建 demo 库，再与 Agent 对话
 python -m scripts.seed_db
 python agent.py chat "员工表有多少人？平均薪资是多少？"
-python agent.py repl      # 交互式会话
-python agent.py tools     # 列出所有已注册工具及 Schema
+python agent.py chat -m qwen3:8b "北京天气？"  # 指定模型
+python agent.py repl                           # 交互式会话（/model <名称> 切换模型）
+python agent.py tools                          # 列出所有已注册工具及 Schema
 ```
 
 启动 Web 服务（UI + SSE 流式）：
@@ -73,9 +74,11 @@ API 一览：
 
 | 接口 | 方法 | 说明 |
 |------|------|------|
-| `/api/chat` | POST | 非流式问答，返回 `{answer, trace, turns, ok}` |
+| `/api/chat` | POST | 非流式问答；body 支持 `model` 覆盖单次使用的模型 |
 | `/api/chat/stream` | POST | SSE 流式；事件 `chunk` / `tool_call` / `tool_result` / `done` |
 | `/api/tools` | GET | 列出全部已注册工具 |
+| `/api/models` | GET | 列出本机支持工具调用的 Ollama 模型及当前默认模型 |
+| `/api/model` | POST | 切换服务端默认模型，body `{"model": "名称"}` |
 | `/api/health` | GET | 服务与模型状态 |
 
 ## 关键设计取舍

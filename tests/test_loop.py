@@ -20,7 +20,7 @@ def _tool_call(name: str, arguments: dict) -> dict:
 
 
 def _fake_client(script: list[dict], monkeypatch, seen: list | None = None):
-    def fake(messages, tools):
+    def fake(messages, tools, model=None):
         if seen is not None:
             seen.append((list(messages), list(tools)))
         if not script:
@@ -89,7 +89,7 @@ def test_tool_error_returned_for_self_heal(monkeypatch) -> None:
 def test_max_turns_cap(monkeypatch) -> None:
     monkeypatch.setattr(settings, "max_turns", 3)
 
-    def always_calls_tool(messages, tools):
+    def always_calls_tool(messages, tools, model=None):
         return _reply(tool_calls=[_tool_call("now", {})])
 
     monkeypatch.setattr(loop, "_chat_once", always_calls_tool)
@@ -100,7 +100,7 @@ def test_max_turns_cap(monkeypatch) -> None:
 
 
 def test_request_exception_reported(monkeypatch) -> None:
-    def failing(messages, tools):
+    def failing(messages, tools, model=None):
         raise _requests.ConnectionError("refused")
 
     monkeypatch.setattr(loop, "_chat_once", failing)
@@ -145,7 +145,7 @@ def test_chat_stream_events_tool_turn(monkeypatch) -> None:
         ]
     )
 
-    def fake_stream_once(messages, tools):
+    def fake_stream_once(messages, tools, model=None):
         return next(script)
 
     monkeypatch.setattr(loop, "_chat_stream_once", fake_stream_once)
@@ -173,7 +173,7 @@ def test_chat_stream_events_token_chunks(monkeypatch) -> None:
         ]
     )
 
-    def fake_stream_once(messages, tools):
+    def fake_stream_once(messages, tools, model=None):
         return next(turns)
 
     monkeypatch.setattr(loop, "_chat_stream_once", fake_stream_once)
@@ -222,14 +222,38 @@ def test_chat_once_http_error_reported(monkeypatch) -> None:
 
 
 def test_chat_stream_once_delegates(monkeypatch) -> None:
-    monkeypatch.setattr(loop, "_chat_once", lambda m, t: _reply("答案"))
+    monkeypatch.setattr(loop, "_chat_once", lambda m, t, model=None: _reply("答案"))
     kind, payload = next(loop._chat_stream_once([], []))
     assert kind == "message"
     assert payload == _reply("答案")
 
 
+def test_chat_model_override_reaches_model_call(monkeypatch) -> None:
+    seen: dict[str, object] = {}
+
+    def spy(messages, tools, model=None):
+        seen["model"] = model
+        return _reply("done")
+
+    monkeypatch.setattr(loop, "_chat_once", spy)
+    loop.chat("hi", model="qwen3:8b", store=SessionStore())
+    assert seen["model"] == "qwen3:8b"
+
+
+def test_chat_stream_model_override_reaches_model_call(monkeypatch) -> None:
+    seen: dict[str, object] = {}
+
+    def spy(messages, tools, model=None):
+        seen["model"] = model
+        yield "message", _reply("done")
+
+    monkeypatch.setattr(loop, "_chat_stream_once", spy)
+    list(loop.chat_stream("hi", model="qwen3:8b", store=SessionStore()))
+    assert seen["model"] == "qwen3:8b"
+
+
 def test_chat_stream_request_exception(monkeypatch) -> None:
-    def failing(messages, tools):
+    def failing(messages, tools, model=None):
         raise _requests.ConnectionError("boom")
         yield
 
@@ -243,7 +267,7 @@ def test_chat_stream_request_exception(monkeypatch) -> None:
 def test_chat_stream_turn_cap(monkeypatch) -> None:
     monkeypatch.setattr(settings, "max_turns", 2)
 
-    def always_tool(messages, tools):
+    def always_tool(messages, tools, model=None):
         yield "message", _reply(tool_calls=[_tool_call("now", {})])
 
     monkeypatch.setattr(loop, "_chat_stream_once", always_tool)

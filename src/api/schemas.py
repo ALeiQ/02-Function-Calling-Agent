@@ -8,6 +8,10 @@ from pydantic import BaseModel, Field
 class ChatRequest(BaseModel):
     message: str = Field(..., min_length=1)
     session_id: str | None = None
+    model: str | None = Field(
+        None,
+        description="覆盖本次请求使用的模型；缺省用服务器当前默认模型",
+    )
 
 
 class ToolCallTrace(BaseModel):
@@ -31,6 +35,19 @@ class ToolInfo(BaseModel):
 
 class ToolsResponse(BaseModel):
     tools: list[ToolInfo]
+
+
+class ModelsResponse(BaseModel):
+    current: str
+    models: list[str]
+
+
+class ModelSelectRequest(BaseModel):
+    model: str
+
+
+class ModelSelectResponse(BaseModel):
+    model: str
 
 
 class HealthResponse(BaseModel):

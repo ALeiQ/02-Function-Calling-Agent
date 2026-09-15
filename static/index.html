@@ -34,6 +34,10 @@
       }
       header h1 { font-size: 18px; margin: 0; }
       header .sub { color: var(--muted); font-size: 13px; }
+      header select {
+        font-size: 13px; padding: 4px 8px; border: 1px solid var(--border); border-radius: 8px;
+        background: var(--card); color: var(--text); max-width: 220px;
+      }
       main { max-width: 760px; margin: 0 auto; padding: 20px 16px 120px; }
       .msg { max-width: 640px; margin: 12px 0; padding: 10px 14px; border-radius: 12px; white-space: pre-wrap; line-height: 1.55; }
       .msg.user { background: var(--user); margin-left: auto; }
@@ -61,6 +65,7 @@
   <body>
     <header>
       <h1>Function-Calling Agent</h1>
+      <select id="model" title="切换模型"></select>
       <span class="sub" id="model-label"></span>
     </header>
 
@@ -81,7 +86,31 @@
       const input = document.getElementById("input");
       const send = document.getElementById("send");
       const statusbar = document.getElementById("statusbar");
+      const modelSelect = document.getElementById("model");
+      const modelLabel = document.getElementById("model-label");
+      let currentModel = null;
       let busy = false;
+
+      function setCurrentModel(name) {
+        currentModel = name;
+        modelLabel.textContent = "model: " + name;
+        modelSelect.value = name;
+      }
+
+      async function switchModel(name) {
+        if (!name || name === currentModel) return;
+        try {
+          const resp = await fetch("/api/model", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ model: name }),
+          });
+          if (!resp.ok) throw new Error(await resp.text());
+          setCurrentModel(name);
+        } catch (err) {
+          alert("切换模型失败: " + err.message);
+        }
+      }
 
       function bubble(cls, text) {
         const el = document.createElement("div");
@@ -144,7 +173,7 @@
           const resp = await fetch("/api/chat/stream", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ message: text, session_id: sessionId }),
+            body: JSON.stringify({ message: text, session_id: sessionId, model: currentModel }),
           });
           if (!resp.ok || !resp.body) throw new Error("HTTP " + resp.status);
 
@@ -201,12 +230,23 @@
         sendMessage();
       });
 
-      fetch("/api/health")
+      fetch("/api/models")
         .then((r) => r.json())
         .then((d) => {
-          document.getElementById("model-label").textContent = "model: " + d.model;
+          modelSelect.innerHTML = "";
+          for (const name of d.models) {
+            const opt = document.createElement("option");
+            opt.value = name;
+            opt.textContent = name;
+            modelSelect.appendChild(opt);
+          }
+          setCurrentModel(d.current);
         })
-        .catch(() => {});
+        .catch(() => {
+          modelLabel.textContent = "model: —";
+        });
+
+      modelSelect.addEventListener("change", () => switchModel(modelSelect.value));
 
       fetch("/api/tools")
         .then((r) => r.json())

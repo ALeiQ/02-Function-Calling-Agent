@@ -37,12 +37,18 @@ SYSTEM_PROMPT = """你是一个具备工具调用能力的助手。
 OLLAMA_BASE = settings.ollama_base_url
 
 
-def _chat_once(messages: list[dict], tools: list[dict]) -> dict[str, Any]:
-    """Call Ollama /api/chat once (non-streaming) and return the message dict."""
+def _chat_once(
+    messages: list[dict], tools: list[dict], model: str | None = None
+) -> dict[str, Any]:
+    """Call Ollama /api/chat once (non-streaming) and return the message dict.
+
+    ``model=None`` falls back to ``settings.ollama_model``, so callers can
+    override the model per request without touching global state.
+    """
     resp = _requests.post(
         f"{OLLAMA_BASE}/api/chat",
         json={
-            "model": settings.ollama_model,
+            "model": model or settings.ollama_model,
             "messages": messages,
             "tools": tools,
             "options": {"temperature": settings.temperature},
@@ -60,7 +66,7 @@ def _ensure_system_prompt(session: Session) -> None:
 
 
 def _chat_stream_once(
-    messages: list[dict], tools: list[dict]
+    messages: list[dict], tools: list[dict], model: str | None = None
 ) -> Generator[tuple[str, Any], None, None]:
     """One model turn for the streaming endpoint.
 
@@ -69,7 +75,7 @@ def _chat_stream_once(
     returns tool_calls) and yields the final message. Token-level streaming is
     therefore currently downgraded to a single content chunk per answer.
     """
-    reply = _chat_once(messages, tools)
+    reply = _chat_once(messages, tools, model)
     yield "message", reply
 
 
@@ -97,6 +103,7 @@ def chat(
     message: str,
     session_id: str | None = None,
     store: SessionStore | None = None,
+    model: str | None = None,
 ) -> dict[str, Any]:
     """Run the full loop for one user message and return the final reply."""
     store = store or default_store
@@ -108,7 +115,7 @@ def chat(
     tools = tool_schema()
     for turn in range(1, settings.max_turns + 1):
         try:
-            reply = _chat_once(session.messages, tools)
+            reply = _chat_once(session.messages, tools, model)
         except _requests.RequestException as exc:
             return {
                 "answer": f"调用模型失败: {exc}",
@@ -137,6 +144,7 @@ def chat_stream(
     message: str,
     session_id: str | None = None,
     store: SessionStore | None = None,
+    model: str | None = None,
 ) -> Generator[dict[str, Any], None, None]:
     """Run the loop with token-level streaming.
 
@@ -155,7 +163,7 @@ def chat_stream(
         content_parts: list[str] = []
         final_message: dict[str, Any] = {}
         try:
-            for kind, payload in _chat_stream_once(session.messages, tools):
+            for kind, payload in _chat_stream_once(session.messages, tools, model):
                 if kind == "chunk":
                     content_parts.append(payload)
                     yield {"type": "chunk", "text": payload}
