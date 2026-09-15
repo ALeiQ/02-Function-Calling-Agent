@@ -15,6 +15,7 @@ lets the model read the failure and self-correct on the next turn.
 
 from __future__ import annotations
 
+import json
 from typing import Any, Generator
 
 import requests as _requests
@@ -68,15 +69,58 @@ def _ensure_system_prompt(session: Session) -> None:
 def _chat_stream_once(
     messages: list[dict], tools: list[dict], model: str | None = None
 ) -> Generator[tuple[str, Any], None, None]:
-    """One model turn for the streaming endpoint.
+    """Stream one model turn for the streaming endpoint.
 
-    Ollama + qwen2.5 returns empty results when ``stream: True`` is combined
-    with ``tools``, so this uses the non-streaming call (which reliably
-    returns tool_calls) and yields the final message. Token-level streaming is
-    therefore currently downgraded to a single content chunk per answer.
+    Emits token deltas as ``("chunk", text)`` and finally the complete reply as
+    ``("message", reply)`` so clients see the answer appear live. If streaming is
+    unavailable (older Ollama combinations return empty results with
+    ``stream: True`` + tools), falls back to the reliable non-streaming call.
     """
-    reply = _chat_once(messages, tools, model)
-    yield "message", reply
+    try:
+        resp = _requests.post(
+            f"{OLLAMA_BASE}/api/chat",
+            json={
+                "model": model or settings.ollama_model,
+                "messages": messages,
+                "tools": tools,
+                "options": {"temperature": settings.temperature},
+                "stream": True,
+            },
+            stream=True,
+            timeout=(5, 60),
+        )
+        resp.raise_for_status()
+        parts: list[str] = []
+        tool_calls: list[dict] = []
+        final: dict[str, Any] = {}
+        try:
+            for raw in resp.iter_lines():
+                if not raw or not raw.startswith(b"data: "):
+                    continue
+                event = json.loads(raw[6:].decode("utf-8"))
+                msg = event.get("message") or {}
+                if msg.get("tool_calls"):
+                    tool_calls.extend(msg["tool_calls"])
+                if msg.get("content"):
+                    parts.append(msg["content"])
+                    yield "chunk", msg["content"]
+                if event.get("done"):
+                    final = msg
+                    break
+        finally:
+            resp.close()
+        if not final and not parts and not tool_calls:
+            raise ValueError("空流式响应")
+        reply = dict(final)
+        reply.setdefault("content", "")
+        reply.setdefault("tool_calls", [])
+        if tool_calls and not reply.get("tool_calls"):
+            reply["tool_calls"] = tool_calls
+        if not reply.get("content") and parts:
+            reply["content"] = "".join(parts)
+        yield "message", reply
+    except (_requests.RequestException, ValueError):
+        yield "message", _chat_once(messages, tools, model)
 
 
 def _append_tool_messages(

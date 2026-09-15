@@ -58,6 +58,9 @@
       .tool-card .t-name { color: #0d9488; font-weight: 600; }
       .tool-card .t-args { color: var(--muted); font-family: ui-monospace, Menlo, monospace; word-break: break-all; }
       .tool-card .t-result { color: var(--text); font-family: ui-monospace, Menlo, monospace; white-space: pre-wrap; word-break: break-all; margin-top: 4px; }
+      .tool-card .t-result table { border-collapse: collapse; margin-top: 4px; font-family: ui-monospace, Menlo, monospace; font-size: 12px; white-space: normal; }
+      .tool-card .t-result th, .tool-card .t-result td { border: 1px solid var(--border); padding: 3px 10px; text-align: left; }
+      .tool-card .t-result th { background: #f1f5f9; font-weight: 600; }
       .tool-card .t-error { color: #dc2626; }
       .thinking { color: var(--muted); font-size: 13px; margin: 6px 0 12px 8px; }
       .composer { position: fixed; bottom: 0; left: 0; right: 0; background: var(--card); border-top: 1px solid var(--border); padding: 12px 16px; }
@@ -104,7 +107,7 @@
       let currentModel = null;
       let busy = false;
       let activeTools = null;
-      const STREAM_TIMEOUT = 120000;
+      const STREAM_TIMEOUT = 200000;
 
       function setCurrentModel(name) {
         currentModel = name;
@@ -167,20 +170,57 @@
         return card;
       }
 
-      function setToolResult(card, event) {
+      function formatToolResult(text) {
+        const error = String(text).startsWith("ERROR:");
+        try {
+          const data = JSON.parse(text);
+          if (data && Array.isArray(data.columns) && Array.isArray(data.data)) {
+            const table = document.createElement("table");
+            const thead = document.createElement("thead");
+            const hr = document.createElement("tr");
+            for (const c of data.columns) {
+              const th = document.createElement("th");
+              th.textContent = c;
+              hr.appendChild(th);
+            }
+            thead.appendChild(hr);
+            table.appendChild(thead);
+            const tbody = document.createElement("tbody");
+            for (const row of data.data) {
+              const tr = document.createElement("tr");
+              for (const c of data.columns) {
+                const td = document.createElement("td");
+                td.textContent = row[c] ?? "";
+                tr.appendChild(td);
+              }
+              tbody.appendChild(tr);
+            }
+            table.appendChild(tbody);
+            const wrap = document.createElement("div");
+            wrap.className = "t-result";
+            wrap.appendChild(table);
+            return wrap;
+          }
+        } catch (_) {
+          /* 不是 JSON → 按纯文本展示 */
+        }
         const pre = document.createElement("div");
-        pre.className = String(event.result).startsWith("ERROR:")
-          ? "t-result t-error"
-          : "t-result";
-        pre.textContent = String(event.result);
-        card.appendChild(pre);
+        pre.className = error ? "t-result t-error" : "t-result";
+        pre.textContent = String(text);
+        return pre;
+      }
+
+      function setToolResult(card, event) {
+        card.appendChild(formatToolResult(event.result));
       }
 
       function restoreHistory(messages) {
         let turn = null;
+        let pendingArgs = [];
         for (const msg of messages) {
           if (msg.role === "user") {
             turn = null;
+            pendingArgs = [];
             bubble("user", msg.content);
           } else if (msg.role === "tool") {
             if (!turn) {
@@ -195,12 +235,24 @@
             turn.querySelector("summary").textContent = "工具调用 (" + count + ")";
             const card = document.createElement("div");
             card.className = "tool-card";
-            card.innerHTML =
-              '<span class="t-name">' + msg.name + "</span>" +
-              ' <span class="t-args">' + JSON.stringify(msg.content) + "</span>";
+            const name = document.createElement("span");
+            name.className = "t-name";
+            name.textContent = msg.name;
+            card.appendChild(name);
+            const args = pendingArgs.shift();
+            if (args) {
+              const a = document.createElement("span");
+              a.className = "t-args";
+              a.textContent = JSON.stringify(args);
+              card.appendChild(a);
+            }
+            card.appendChild(formatToolResult(msg.content));
             turn.appendChild(card);
-          } else if (msg.role === "assistant" && msg.content) {
-            bubble("assistant", msg.content);
+          } else if (msg.role === "assistant") {
+            if (msg.content) bubble("assistant", msg.content);
+            if (Array.isArray(msg.tool_calls) && msg.tool_calls.length) {
+              pendingArgs = msg.tool_calls.map((c) => c.function.arguments);
+            }
           }
         }
       }
@@ -231,10 +283,11 @@
         log.appendChild(thinking);
 
         const controller = new AbortController();
+        const started = Date.now();
         let lastActivity = Date.now();
         const ticker = setInterval(() => {
           thinking.textContent =
-            "思考中…(已等待 " + Math.round((Date.now() - lastActivity) / 1000) + "s)";
+            "思考中…(已等待 " + Math.round((Date.now() - started) / 1000) + "s)";
         }, 1000);
         const watchdog = setInterval(() => {
           if (Date.now() - lastActivity > STREAM_TIMEOUT) controller.abort();

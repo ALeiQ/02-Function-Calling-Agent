@@ -229,11 +229,107 @@ def test_chat_once_http_error_reported(monkeypatch) -> None:
     assert "调用模型失败" in result["answer"]
 
 
-def test_chat_stream_once_delegates(monkeypatch) -> None:
+def test_chat_stream_once_streams_tokens(monkeypatch) -> None:
+    lines = iter(
+        [
+            b'data: {"message":{"role":"assistant","content":"\u7b54"}}',
+            b'data: {"message":{"role":"assistant","content":"\u6848"}}',
+            b'data: {"done":true}',
+        ]
+    )
+
+    class FakeResp:
+        def raise_for_status(self) -> None:
+            pass
+
+        def iter_lines(self, decode_unicode=False):
+            return lines
+
+        def close(self) -> None:
+            pass
+
+    captured: dict = {}
+
+    def fake_post(url, json, timeout, stream=True):
+        captured["url"] = url
+        captured["json"] = json
+        captured["stream"] = stream
+        captured["timeout"] = timeout
+        return FakeResp()
+
+    monkeypatch.setattr(loop._requests, "post", fake_post)
+    events = list(loop._chat_stream_once([{"role": "user", "content": "hi"}], []))
+    assert events == [
+        ("chunk", "答"),
+        ("chunk", "案"),
+        ("message", {"content": "答案", "tool_calls": []}),
+    ]
+    assert captured["json"]["stream"] is True
+    assert captured["json"]["model"] == settings.ollama_model
+    assert captured["stream"] is True
+
+
+def test_chat_stream_once_http_error_falls_back(monkeypatch) -> None:
+    class BadResp:
+        def raise_for_status(self) -> None:
+            raise _requests.HTTPError("500 Internal Server Error")
+
+    monkeypatch.setattr(
+        loop._requests,
+        "post",
+        lambda *a, **k: BadResp(),
+    )
     monkeypatch.setattr(loop, "_chat_once", lambda m, t, model=None: _reply("答案"))
-    kind, payload = next(loop._chat_stream_once([], []))
-    assert kind == "message"
-    assert payload == _reply("答案")
+    events = list(loop._chat_stream_once([], []))
+    assert events == [("message", _reply("答案"))]
+
+
+def test_chat_stream_once_empty_stream_falls_back(monkeypatch) -> None:
+    lines = iter([b'data: {"message":{}}'])
+
+    class FakeResp:
+        def raise_for_status(self) -> None:
+            pass
+
+        def iter_lines(self, decode_unicode=False):
+            return lines
+
+        def close(self) -> None:
+            pass
+
+    monkeypatch.setattr(loop._requests, "post", lambda *a, **k: FakeResp())
+    monkeypatch.setattr(loop, "_chat_once", lambda m, t, model=None: _reply("答案"))
+    events = list(loop._chat_stream_once([], []))
+    assert events == [("message", _reply("答案"))]
+
+
+def test_chat_stream_once_tool_call_message(monkeypatch) -> None:
+    lines = iter(
+        [
+            b'data: {"message":{"role":"assistant","content":"","tool_calls":'
+            b'[{"function":{"name":"now","arguments":{}}}]}}',
+            b'data: {"done":true}',
+        ]
+    )
+
+    class FakeResp:
+        def raise_for_status(self) -> None:
+            pass
+
+        def iter_lines(self, decode_unicode=False):
+            return lines
+
+        def close(self) -> None:
+            pass
+
+    monkeypatch.setattr(loop._requests, "post", lambda *a, **k: FakeResp())
+    events = [e for e in loop._chat_stream_once([], []) if e[0] == "message"]
+    assert events == [
+        (
+            "message",
+            {"content": "", "tool_calls": [_tool_call("now", {})]},
+        )
+    ]
 
 
 def test_chat_model_override_reaches_model_call(monkeypatch) -> None:
