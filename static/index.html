@@ -99,6 +99,7 @@
       const modelLabel = document.getElementById("model-label");
       let currentModel = null;
       let busy = false;
+      let activeTools = null;
       const STREAM_TIMEOUT = 120000;
 
       function setCurrentModel(name) {
@@ -136,20 +137,24 @@
         dots.forEach((d) => d.remove());
       }
 
-      function addToolCard(event) {
-        let tools = document.querySelector(".tools.active");
-        if (!tools) {
-          tools = document.createElement("div");
-          tools.className = "tools active";
-          log.appendChild(tools);
+      function addToolCard(event, anchor) {
+        if (!activeTools) {
+          activeTools = document.createElement("details");
+          activeTools.className = "tools";
+          const summary = document.createElement("summary");
+          summary.textContent = "工具调用";
+          activeTools.appendChild(summary);
+          log.insertBefore(activeTools, anchor);
         }
+        const count = activeTools.querySelectorAll(".tool-card").length + 1;
+        activeTools.querySelector("summary").textContent = "工具调用 (" + count + ")";
         const card = document.createElement("div");
         card.className = "tool-card";
         card.innerHTML =
           '<span class="t-name">' + event.tool + "</span>" +
           ' <span class="t-args">' + JSON.stringify(event.arguments || {}) + "</span>" +
           ' <span class="t-args">…</span>';
-        tools.appendChild(card);
+        activeTools.appendChild(card);
         window.scrollTo(0, document.body.scrollHeight);
         return card;
       }
@@ -164,24 +169,28 @@
       }
 
       function restoreHistory(messages) {
-        let tools = null;
+        let turn = null;
         for (const msg of messages) {
           if (msg.role === "user") {
-            tools = null;
+            turn = null;
             bubble("user", msg.content);
           } else if (msg.role === "tool") {
-            if (!tools) {
-              tools = document.createElement("div");
-              tools.className = "tools active";
-              tools.innerHTML = "<summary>工具调用</summary>";
-              log.appendChild(tools);
+            if (!turn) {
+              turn = document.createElement("details");
+              turn.className = "tools";
+              const summary = document.createElement("summary");
+              summary.textContent = "工具调用";
+              turn.appendChild(summary);
+              log.appendChild(turn);
             }
+            const count = turn.querySelectorAll(".tool-card").length + 1;
+            turn.querySelector("summary").textContent = "工具调用 (" + count + ")";
             const card = document.createElement("div");
             card.className = "tool-card";
             card.innerHTML =
               '<span class="t-name">' + msg.name + "</span>" +
               ' <span class="t-args">' + JSON.stringify(msg.content) + "</span>";
-            tools.appendChild(card);
+            turn.appendChild(card);
           } else if (msg.role === "assistant" && msg.content) {
             bubble("assistant", msg.content);
           }
@@ -207,6 +216,7 @@
 
         bubble("user", text);
         const assistant = bubble("assistant", "");
+        activeTools = null;
         const thinking = document.createElement("div");
         thinking.className = "thinking";
         thinking.textContent = "思考中…";
@@ -256,7 +266,7 @@
               } else if (event.type === "tool_call") {
                 touch();
                 clearThinking();
-                const card = addToolCard(event);
+                const card = addToolCard(event, assistant);
                 toolCards.set(event.index, card);
               } else if (event.type === "tool_result") {
                 touch();
