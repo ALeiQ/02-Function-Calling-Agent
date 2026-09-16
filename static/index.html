@@ -79,6 +79,9 @@
     <header>
       <h1>Function-Calling Agent</h1>
       <select id="model" title="切换模型"></select>
+      <label class="sub toggle" title="qwen3 思考开关：开=更严谨、多花 8-9s；关=最快(推荐日常)">
+        <input type="checkbox" id="think"><span> 思考</span>
+      </label>
       <span class="sub" id="model-label"></span>
       <button id="new-chat" type="button" title="清空当前会话，开始新对话">新对话</button>
     </header>
@@ -300,7 +303,7 @@
           const resp = await fetch("/api/chat/stream", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ message: text, session_id: sessionId, model: currentModel }),
+            body: JSON.stringify({ message: text, session_id: sessionId, model: currentModel, think: document.getElementById("think").checked }),
             signal: controller.signal,
           });
           if (!resp.ok || !resp.body) throw new Error("HTTP " + resp.status);

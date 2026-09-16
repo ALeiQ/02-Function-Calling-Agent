@@ -20,7 +20,7 @@ def _tool_call(name: str, arguments: dict) -> dict:
 
 
 def _fake_client(script: list[dict], monkeypatch, seen: list | None = None):
-    def fake(messages, tools, model=None):
+    def fake(messages, tools, model=None, think=None):
         if seen is not None:
             seen.append((list(messages), list(tools)))
         if not script:
@@ -97,7 +97,7 @@ def test_tool_error_returned_for_self_heal(monkeypatch) -> None:
 def test_max_turns_cap(monkeypatch) -> None:
     monkeypatch.setattr(settings, "max_turns", 3)
 
-    def always_calls_tool(messages, tools, model=None):
+    def always_calls_tool(messages, tools, model=None, think=None):
         return _reply(tool_calls=[_tool_call("now", {})])
 
     monkeypatch.setattr(loop, "_chat_once", always_calls_tool)
@@ -108,7 +108,7 @@ def test_max_turns_cap(monkeypatch) -> None:
 
 
 def test_request_exception_reported(monkeypatch) -> None:
-    def failing(messages, tools, model=None):
+    def failing(messages, tools, model=None, think=None):
         raise _requests.ConnectionError("refused")
 
     monkeypatch.setattr(loop, "_chat_once", failing)
@@ -153,7 +153,7 @@ def test_chat_stream_events_tool_turn(monkeypatch) -> None:
         ]
     )
 
-    def fake_stream_once(messages, tools, model=None):
+    def fake_stream_once(messages, tools, model=None, think=None):
         return next(script)
 
     monkeypatch.setattr(loop, "_chat_stream_once", fake_stream_once)
@@ -181,7 +181,7 @@ def test_chat_stream_events_token_chunks(monkeypatch) -> None:
         ]
     )
 
-    def fake_stream_once(messages, tools, model=None):
+    def fake_stream_once(messages, tools, model=None, think=None):
         return next(turns)
 
     monkeypatch.setattr(loop, "_chat_stream_once", fake_stream_once)
@@ -335,7 +335,7 @@ def test_chat_stream_once_tool_call_message(monkeypatch) -> None:
 def test_chat_model_override_reaches_model_call(monkeypatch) -> None:
     seen: dict[str, object] = {}
 
-    def spy(messages, tools, model=None):
+    def spy(messages, tools, model=None, think=None):
         seen["model"] = model
         return _reply("done")
 
@@ -347,7 +347,7 @@ def test_chat_model_override_reaches_model_call(monkeypatch) -> None:
 def test_chat_stream_model_override_reaches_model_call(monkeypatch) -> None:
     seen: dict[str, object] = {}
 
-    def spy(messages, tools, model=None):
+    def spy(messages, tools, model=None, think=None):
         seen["model"] = model
         yield "message", _reply("done")
 
@@ -357,7 +357,7 @@ def test_chat_stream_model_override_reaches_model_call(monkeypatch) -> None:
 
 
 def test_chat_stream_request_exception(monkeypatch) -> None:
-    def failing(messages, tools, model=None):
+    def failing(messages, tools, model=None, think=None):
         raise _requests.ConnectionError("boom")
         yield
 
@@ -371,7 +371,7 @@ def test_chat_stream_request_exception(monkeypatch) -> None:
 def test_chat_stream_turn_cap(monkeypatch) -> None:
     monkeypatch.setattr(settings, "max_turns", 2)
 
-    def always_tool(messages, tools, model=None):
+    def always_tool(messages, tools, model=None, think=None):
         yield "message", _reply(tool_calls=[_tool_call("now", {})])
 
     monkeypatch.setattr(loop, "_chat_stream_once", always_tool)
@@ -379,3 +379,32 @@ def test_chat_stream_turn_cap(monkeypatch) -> None:
     assert events[-1]["ok"] is False
     assert "最大调用轮数" in events[-1]["answer"]
     assert events[-1]["turns"] == 2
+
+
+# think 缺省→传给 Ollama 的 think=None(Ollama 顶层用服务器默认)
+def test_chat_think_defaults_none(monkeypatch):
+    import src.agent.loop as loop
+
+    bag = {}
+
+    def fake(messages, tools, model=None, think=None):
+        bag["think"] = think
+        return {"content": "hi", "tool_calls": []}
+
+    monkeypatch.setattr(loop, "_chat_once", fake)
+    loop.chat("hi")
+    assert bag["think"] is None
+
+
+def test_chat_think_true_reaches_model(monkeypatch):
+    import src.agent.loop as loop
+
+    bag = {}
+
+    def fake(messages, tools, model=None, think=None):
+        bag["think"] = think
+        return {"content": "hi", "tool_calls": []}
+
+    monkeypatch.setattr(loop, "_chat_once", fake)
+    loop.chat("hi", think=True)
+    assert bag["think"] is True

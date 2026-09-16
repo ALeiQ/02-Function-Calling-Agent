@@ -39,12 +39,13 @@ OLLAMA_BASE = settings.ollama_base_url
 
 
 def _chat_once(
-    messages: list[dict], tools: list[dict], model: str | None = None
+    messages: list[dict], tools: list[dict], model: str | None = None, think: bool | None = None
 ) -> dict[str, Any]:
     """Call Ollama /api/chat once (non-streaming) and return the message dict.
 
     ``model=None`` falls back to ``settings.ollama_model``, so callers can
-    override the model per request without touching global state.
+    override the model per request without touching global state. ``think=None``
+    falls back to ``settings.ollama_think`` the same way.
     """
     resp = _requests.post(
         f"{OLLAMA_BASE}/api/chat",
@@ -54,7 +55,7 @@ def _chat_once(
             "tools": tools,
             "options": {"temperature": settings.temperature},
             "stream": False,
-            "think": settings.ollama_think,
+            "think": settings.ollama_think if think is None else think,
             "keep_alive": settings.ollama_keep_alive,
         },
         timeout=180,
@@ -69,7 +70,7 @@ def _ensure_system_prompt(session: Session) -> None:
 
 
 def _chat_stream_once(
-    messages: list[dict], tools: list[dict], model: str | None = None
+    messages: list[dict], tools: list[dict], model: str | None = None, think: bool | None = None
 ) -> Generator[tuple[str, Any], None, None]:
     """Stream one model turn for the streaming endpoint.
 
@@ -77,6 +78,10 @@ def _chat_stream_once(
     ``("message", reply)`` so clients see the answer appear live. If streaming is
     unavailable (older Ollama combinations return empty results with
     ``stream: True`` + tools), falls back to the reliable non-streaming call.
+
+    ``model=None``/``think=None`` fall back to ``settings.ollama_model`` /
+    ``settings.ollama_think``, so callers can override either per request
+    without touching global state.
     """
     try:
         resp = _requests.post(
@@ -87,7 +92,7 @@ def _chat_stream_once(
                 "tools": tools,
                 "options": {"temperature": settings.temperature},
                 "stream": True,
-                "think": settings.ollama_think,
+                "think": settings.ollama_think if think is None else think,
                 "keep_alive": settings.ollama_keep_alive,
             },
             stream=True,
@@ -157,6 +162,7 @@ def chat(
     session_id: str | None = None,
     store: SessionStore | None = None,
     model: str | None = None,
+    think: bool | None = None,
 ) -> dict[str, Any]:
     """Run the full loop for one user message and return the final reply."""
     store = store or default_store
@@ -168,7 +174,7 @@ def chat(
     tools = tool_schema()
     for turn in range(1, settings.max_turns + 1):
         try:
-            reply = _chat_once(session.messages, tools, model)
+            reply = _chat_once(session.messages, tools, model, think)
         except _requests.RequestException as exc:
             return {
                 "answer": f"调用模型失败: {exc}",
@@ -198,6 +204,7 @@ def chat_stream(
     session_id: str | None = None,
     store: SessionStore | None = None,
     model: str | None = None,
+    think: bool | None = None,
 ) -> Generator[dict[str, Any], None, None]:
     """Run the loop with token-level streaming.
 
@@ -216,7 +223,7 @@ def chat_stream(
         content_parts: list[str] = []
         final_message: dict[str, Any] = {}
         try:
-            for kind, payload in _chat_stream_once(session.messages, tools, model):
+            for kind, payload in _chat_stream_once(session.messages, tools, model, think):
                 if kind == "chunk":
                     content_parts.append(payload)
                     yield {"type": "chunk", "text": payload}

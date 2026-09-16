@@ -35,7 +35,7 @@ def test_tools() -> None:
 
 
 def test_chat(monkeypatch: pytest.MonkeyPatch) -> None:
-    def fake_chat(message, session_id=None, store=None, model=None):
+    def fake_chat(message, session_id=None, store=None, model=None, think=None):
         return {
             "answer": "42",
             "trace": [
@@ -58,7 +58,7 @@ def test_chat(monkeypatch: pytest.MonkeyPatch) -> None:
 def test_chat_model_override_reaches_loop(monkeypatch: pytest.MonkeyPatch) -> None:
     seen: dict[str, object] = {}
 
-    def fake_chat(message, session_id=None, store=None, model=None):
+    def fake_chat(message, session_id=None, store=None, model=None, think=None):
         seen["model"] = model
         return {"answer": "hi", "trace": [], "turns": 1, "ok": True}
 
@@ -82,7 +82,7 @@ def test_chat_stream_sse(monkeypatch: pytest.MonkeyPatch) -> None:
         {"type": "done", "answer": "现在是中午。", "trace": [], "turns": 2, "ok": True},
     ]
 
-    def fake_stream(message, session_id=None, store=None, model=None):
+    def fake_stream(message, session_id=None, store=None, model=None, think=None):
         yield from events
 
     monkeypatch.setattr(loop, "chat_stream", fake_stream)
@@ -98,7 +98,7 @@ def test_chat_stream_sse(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 def test_streaming_chunks_reach_client(monkeypatch: pytest.MonkeyPatch) -> None:
-    def fake_stream(message, session_id=None, store=None, model=None):
+    def fake_stream(message, session_id=None, store=None, model=None, think=None):
         yield {"type": "chunk", "text": "你"}
         yield {"type": "chunk", "text": "好"}
         yield {"type": "done", "answer": "你好", "trace": [], "turns": 1, "ok": True}
@@ -118,7 +118,7 @@ def test_index_served() -> None:
 
 
 def test_stream_endpoint_reports_generator_errors(monkeypatch: pytest.MonkeyPatch) -> None:
-    def exploding(message, session_id=None, store=None, model=None):
+    def exploding(message, session_id=None, store=None, model=None, think=None):
         raise RuntimeError("kaboom")
         yield
 

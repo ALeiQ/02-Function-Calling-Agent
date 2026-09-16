@@ -11,6 +11,16 @@ class ChatRequest(BaseModel):
     model: str | None = Field(
         None,
         description="覆盖本次请求使用的模型；缺省用服务器当前默认模型",
+        examples=["qwen3:8b"],
+    )
+    think: bool | None = Field(
+        None,
+        description="覆盖本次请求的思考模式；缺省用服务器当前默认(settings.ollama_think)",
+        examples=[True],
+    )
+    think: bool | None = Field(
+        None,
+        description="覆盖本次请求的思考模式(true/思考)；缺省用服务器当前设置",
     )
 
 

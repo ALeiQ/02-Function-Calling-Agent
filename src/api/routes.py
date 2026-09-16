@@ -119,6 +119,7 @@ def chat(request: ChatRequest) -> ChatResponse:
         session_id=request.session_id,
         store=default_store,
         model=request.model,
+        think=request.think,
     )
     return ChatResponse(
         answer=result["answer"],
@@ -141,6 +142,7 @@ def chat_stream(request: ChatRequest) -> StreamingResponse:
                 session_id=request.session_id,
                 store=default_store,
                 model=request.model,
+                think=request.think,
             ):
                 yield _sse(event)
         except Exception as exc:  # keep the stream alive on unexpected errors
